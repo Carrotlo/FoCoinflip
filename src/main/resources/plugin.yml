@@ -1,0 +1,28 @@
+name: FoCoinflip
+description: Server-owner-friendly coinflip plugin
+version: '${version}'
+main: me.foesio.foCoinflip.FoCoinflip
+api-version: '1.21'
+authors: [Carrotio]
+depend: [Vault]
+softdepend: [PlaceholderAPI, SkinsRestorer]
+
+commands:
+  focoinflip:
+    description: Open or manage coinflips
+    aliases: [coinflip, cf]
+    permission: focoinflip.use
+    usage: /<command> [create <amount>|delete]
+  focoinflipadmin:
+    description: Admin tools for FoCoinflip
+    aliases: [coinflipadmin, cfadmin]
+    permission: focoinflip.admin
+    usage: /<command> <version|reload|editor>
+
+permissions:
+  focoinflip.use:
+    description: Allows using coinflip commands
+    default: true
+  focoinflip.admin:
+    description: Allows using coinflip admin commands
+    default: op

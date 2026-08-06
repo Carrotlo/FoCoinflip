@@ -1,0 +1,32 @@
+# FoCoinflip 1.8
+# General gameplay settings live here.
+# Messages are in messages.yml.
+# Public GUI layout/items are in guis/main.yml and guis/animation.yml.
+# File logging works like debug mode and saves plugin activity to logs/latest.log. Default: false
+file-logging: false
+
+settings:
+  # Percent removed from the total pot before payout. Range: 0-100.
+  tax-percent: 0.0
+
+  # Minimum allowed bet. Player/admin input supports k/m/b/t and full words, e.g. 50k, 1.5m, or 1 billion.
+  min-bet: 100.0
+
+  # Maximum allowed bet.
+  max-bet: 9999999999.0
+
+  # If true, players cannot close the flip animation until it finishes.
+  lock-animation-gui: false
+
+  # If true, resolved coinflips broadcast the winner message from messages.yml.
+  announce-coinflip-result: true
+
+  # If true, displayed money values use compact K/M/B/T formatting with 2 decimals.
+  compact-money-format: false
+
+  animation:
+    # Total animation length in ticks. 20 ticks = 1 second. Minimum: 20.
+    duration-ticks: 60
+
+    # How often the animation item changes in ticks. Minimum: 1.
+    frame-interval-ticks: 4
