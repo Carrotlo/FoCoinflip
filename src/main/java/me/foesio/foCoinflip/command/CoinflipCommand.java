@@ -9,6 +9,7 @@ import me.foesio.foCoinflip.config.PluginConfig;
 import me.foesio.foCoinflip.gui.GuiManager;
 import me.foesio.foCoinflip.util.MoneyUtil;
 import me.foesio.core.message.FoMessageService;
+import me.foesio.core.sound.FoAdminSounds;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -22,6 +23,7 @@ public class CoinflipCommand implements CommandExecutor, TabCompleter {
     private final CoinflipManager coinflipManager;
     private final GuiManager guiManager;
     private final me.foesio.foCoinflip.FoCoinflip plugin;
+    private final FoAdminSounds adminSounds;
 
     public CoinflipCommand(me.foesio.foCoinflip.FoCoinflip plugin, PluginConfig config, FoMessageService messageService,
             CoinflipManager coinflipManager, GuiManager guiManager) {
@@ -30,6 +32,7 @@ public class CoinflipCommand implements CommandExecutor, TabCompleter {
         this.messageService = messageService;
         this.coinflipManager = coinflipManager;
         this.guiManager = guiManager;
+        this.adminSounds = plugin.getAdminSounds();
     }
 
     @Override
@@ -43,11 +46,12 @@ public class CoinflipCommand implements CommandExecutor, TabCompleter {
         if (!player.hasPermission("focoinflip.use")) {
             plugin.fileLogger().debug("Player command rejected: no permission. player=" + player.getName());
             messageService.send(player, "no-permission", "{prefix}{bad}No permission.");
+            adminSounds.updateError(player);
             return true;
         }
 
         if (args.length == 0) {
-            guiManager.openMainMenu(player, 0);
+            guiManager.openMainMenuFromCommand(player);
             return true;
         }
 
@@ -63,12 +67,14 @@ public class CoinflipCommand implements CommandExecutor, TabCompleter {
 
         messageService.send(player, "usage-main",
                 "{prefix}{muted}Use {white}/coinflip{muted}, {white}/coinflip create <amount>{muted}, or {white}/coinflip delete");
+        adminSounds.updateError(player);
         return true;
     }
 
     private void handleCreate(Player player, String[] args) {
         if (args.length < 2) {
             messageService.send(player, "usage-create", "{prefix}{bad}Usage: {white}/coinflip create <amount>");
+            adminSounds.updateError(player);
             return;
         }
 
@@ -78,11 +84,13 @@ public class CoinflipCommand implements CommandExecutor, TabCompleter {
         } catch (NumberFormatException exception) {
             plugin.fileLogger().debug("Create command rejected: invalid amount. player=" + player.getName());
             messageService.send(player, "invalid-amount", "{prefix}{bad}Amount must be valid.");
+            adminSounds.updateError(player);
             return;
         }
         if (!Double.isFinite(amount)) {
             plugin.fileLogger().debug("Create command rejected: non-finite amount. player=" + player.getName());
             messageService.send(player, "invalid-amount", "{prefix}{bad}Amount must be valid.");
+            adminSounds.updateError(player);
             return;
         }
 
@@ -91,6 +99,7 @@ public class CoinflipCommand implements CommandExecutor, TabCompleter {
                     + ", amount=" + amount + ", min=" + config.getMinBet());
             messageService.send(player, "below-min-bet", "{prefix}{bad}Minimum bet is {theme}${min}{bad}.",
                     Map.of("min", formatMoney(config.getMinBet())));
+            adminSounds.updateError(player);
             return;
         }
 
@@ -99,6 +108,7 @@ public class CoinflipCommand implements CommandExecutor, TabCompleter {
                     + ", amount=" + amount + ", max=" + config.getMaxBet());
             messageService.send(player, "above-max-bet", "{prefix}{bad}Maximum bet is {theme}${max}{bad}.",
                     Map.of("max", formatMoney(config.getMaxBet())));
+            adminSounds.updateError(player);
             return;
         }
 
@@ -107,12 +117,13 @@ public class CoinflipCommand implements CommandExecutor, TabCompleter {
             case SUCCESS -> {
                 messageService.send(player, "flip-created", "{prefix}{good}Created coinflip for {theme}${amount}{good}.",
                         Map.of("amount", formatMoney(amount)));
-                guiManager.openMainMenu(player, 0);
+                plugin.sounds().play(player, "coinflip.created");
+                guiManager.openMainMenuFromCommand(player);
             }
-            case ALREADY_HAS_FLIP -> messageService.send(player, "already-has-flip",
+            case ALREADY_HAS_FLIP -> sendCreateError(player, "already-has-flip",
                     "{prefix}{bad}You already have an active coinflip.");
-            case INSUFFICIENT_FUNDS -> messageService.send(player, "not-enough-money", "{prefix}{bad}Not enough money.");
-            case ECONOMY_ERROR -> messageService.send(player, "economy-error",
+            case INSUFFICIENT_FUNDS -> sendCreateError(player, "not-enough-money", "{prefix}{bad}Not enough money.");
+            case ECONOMY_ERROR -> sendCreateError(player, "economy-error",
                     "{prefix}{bad}Economy transaction failed. {muted}Try again.");
         }
     }
@@ -123,13 +134,18 @@ public class CoinflipCommand implements CommandExecutor, TabCompleter {
             case SUCCESS -> {
                 messageService.send(player, "flip-deleted", "{prefix}{good}Deleted coinflip and refunded {theme}${amount}{good}.",
                         Map.of("amount", formatMoney(deleteResponse.coinflip().getStake())));
-                guiManager.openMainMenu(player, 0);
+                plugin.sounds().play(player, "coinflip.cancelled");
+                guiManager.openMainMenuFromCommand(player);
             }
-            case NONE_FOUND -> messageService.send(player, "no-owned-flip",
-                    "{prefix}{bad}No active coinflip to delete.");
-            case ECONOMY_ERROR -> messageService.send(player, "economy-error",
+            case NONE_FOUND -> sendCreateError(player, "no-owned-flip", "{prefix}{bad}No active coinflip to delete.");
+            case ECONOMY_ERROR -> sendCreateError(player, "economy-error",
                     "{prefix}{bad}Economy transaction failed. {muted}Try again.");
         }
+    }
+
+    private void sendCreateError(Player player, String path, String fallback) {
+        messageService.send(player, path, fallback);
+        adminSounds.updateError(player);
     }
 
     private String formatMoney(double amount) {

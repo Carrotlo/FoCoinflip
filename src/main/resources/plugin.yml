@@ -11,12 +11,10 @@ commands:
   focoinflip:
     description: Open or manage coinflips
     aliases: [coinflip, cf]
-    permission: focoinflip.use
     usage: /<command> [create <amount>|delete]
   focoinflipadmin:
     description: Admin tools for FoCoinflip
     aliases: [coinflipadmin, cfadmin]
-    permission: focoinflip.admin
     usage: /<command> <version|reload|editor>
 
 permissions:

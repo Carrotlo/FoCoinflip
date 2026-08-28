@@ -148,7 +148,16 @@ public class GuiManager {
         player.openInventory(inventory);
     }
 
+    public void openMainMenuFromCommand(Player player) {
+        plugin.getGuiSounds().open(player);
+        openMainMenu(player, 0);
+    }
+
     public void openAdminEditor(Player player) {
+        openAdminEditor(player, true);
+    }
+
+    private void openAdminEditor(Player player, boolean playOpenSound) {
         EditorMenuBuilder editor = EditorMenuBuilder.menu(
                 "focoinflip-admin",
                 messageService.renderTemplate(config.getAdminGuiTitle(), Map.of()),
@@ -175,17 +184,22 @@ public class GuiManager {
                 List.of("{white}Current: {theme}" + config.getAnimationFrameIntervalTicks() + " ticks",
                         "{muted}Click to edit")));
         editor.open(player);
+        if (playOpenSound) {
+            plugin.getEditorSounds().open(player);
+        }
     }
 
     public void handleMainClick(Player player, MainGuiHolder holder, int slot) {
         FileConfiguration gui = config.mainGui();
         int inventorySize = player.getOpenInventory().getTopInventory().getSize();
         if (slot == configuredSlot(gui, "navigation.previous-slot", 45, inventorySize, "main previous")) {
+            plugin.getGuiSounds().previousPage(player);
             openMainMenu(player, holder.getPage() - 1);
             return;
         }
 
         if (slot == configuredSlot(gui, "navigation.next-slot", 53, inventorySize, "main next")) {
+            plugin.getGuiSounds().nextPage(player);
             openMainMenu(player, holder.getPage() + 1);
             return;
         }
@@ -194,6 +208,7 @@ public class GuiManager {
             List<CycleOption> options = configuredSortOptions(gui);
             String current = currentSortMode(player, options);
             sortModes.put(player.getUniqueId(), CycleOptions.nextValue(current, options));
+            plugin.getGuiSounds().cycle(player);
             openMainMenu(player, holder.getPage());
             return;
         }
@@ -202,11 +217,13 @@ public class GuiManager {
             if (isRefreshOnCooldown(player)) {
                 return;
             }
+            plugin.getGuiSounds().click(player);
             openMainMenu(player, holder.getPage());
             return;
         }
 
         if (slot == configuredSlot(gui, "items.create.slot", 48, inventorySize, "main create")) {
+            plugin.getGuiSounds().click(player);
             player.closeInventory();
             sendCreateSuggestion(player);
             return;
@@ -223,13 +240,13 @@ public class GuiManager {
                 player.closeInventory();
                 startAnimation(joinResponse.resolution());
             }
-            case OWN_FLIP -> messageService.send(player, "join-own", "{prefix}{bad}You cannot join your own coinflip.");
-            case INSUFFICIENT_FUNDS -> messageService.send(player, "not-enough-money", "{prefix}{bad}Not enough money.");
+            case OWN_FLIP -> sendJoinError(player, "join-own", "{prefix}{bad}You cannot join your own coinflip.");
+            case INSUFFICIENT_FUNDS -> sendJoinError(player, "not-enough-money", "{prefix}{bad}Not enough money.");
             case ALREADY_IN_PROGRESS, NOT_FOUND -> {
-                messageService.send(player, "flip-no-longer-available", "{prefix}{bad}Coinflip no longer available.");
+                sendJoinError(player, "flip-no-longer-available", "{prefix}{bad}Coinflip no longer available.");
                 openMainMenu(player, holder.getPage());
             }
-            case ECONOMY_ERROR -> messageService.send(player, "economy-error",
+            case ECONOMY_ERROR -> sendJoinError(player, "economy-error",
                     "{prefix}{bad}Economy transaction failed. {muted}Try again.");
         }
     }
@@ -248,7 +265,8 @@ public class GuiManager {
                 }
                 saveConfigValue("settings.tax-percent", value);
                 logAdminSetting(player, "settings.tax-percent", value);
-                openAdminEditor(player);
+                plugin.getEditorSounds().save(player);
+                openAdminEditor(player, false);
             });
             case "min-bet" -> openEditorInput(player, true, "Min Bet", MoneyUtil.raw(config.getMinBet()), "0",
                     MoneyUtil.raw(config.getMaxBet()), "a positive money amount, like 50k, 1m, or 1 billion", input -> {
@@ -261,7 +279,8 @@ public class GuiManager {
                 }
                 saveConfigValue("settings.min-bet", value);
                 logAdminSetting(player, "settings.min-bet", value);
-                openAdminEditor(player);
+                plugin.getEditorSounds().save(player);
+                openAdminEditor(player, false);
             });
             case "max-bet" -> openEditorInput(player, true, "Max Bet", MoneyUtil.raw(config.getMaxBet()),
                     MoneyUtil.raw(config.getMinBet()), "unlimited", "a money amount, like 1m, 1b, or 1 trillion", input -> {
@@ -271,24 +290,31 @@ public class GuiManager {
                 }
                 saveConfigValue("settings.max-bet", value);
                 logAdminSetting(player, "settings.max-bet", value);
-                openAdminEditor(player);
+                plugin.getEditorSounds().save(player);
+                openAdminEditor(player, false);
             });
             case "compact-money-format" -> {
-                saveConfigValue("settings.compact-money-format", !config.isCompactMoneyFormat());
-                logAdminSetting(player, "settings.compact-money-format", config.isCompactMoneyFormat());
-                openAdminEditor(player);
+                boolean enabled = !config.isCompactMoneyFormat();
+                saveConfigValue("settings.compact-money-format", enabled);
+                logAdminSetting(player, "settings.compact-money-format", enabled);
+                plugin.getEditorSounds().toggle(player, enabled);
+                openAdminEditor(player, false);
                 messageService.send(player, "setting-updated", "{prefix}{good}Setting updated.");
             }
             case "lock-animation-gui" -> {
-                saveConfigValue("settings.lock-animation-gui", !config.isLockAnimationGui());
-                logAdminSetting(player, "settings.lock-animation-gui", config.isLockAnimationGui());
-                openAdminEditor(player);
+                boolean enabled = !config.isLockAnimationGui();
+                saveConfigValue("settings.lock-animation-gui", enabled);
+                logAdminSetting(player, "settings.lock-animation-gui", enabled);
+                plugin.getEditorSounds().toggle(player, enabled);
+                openAdminEditor(player, false);
                 messageService.send(player, "setting-updated", "{prefix}{good}Setting updated.");
             }
             case "announce-result" -> {
-                saveConfigValue("settings.announce-coinflip-result", !config.isAnnounceCoinflipResult());
-                logAdminSetting(player, "settings.announce-coinflip-result", config.isAnnounceCoinflipResult());
-                openAdminEditor(player);
+                boolean enabled = !config.isAnnounceCoinflipResult();
+                saveConfigValue("settings.announce-coinflip-result", enabled);
+                logAdminSetting(player, "settings.announce-coinflip-result", enabled);
+                plugin.getEditorSounds().toggle(player, enabled);
+                openAdminEditor(player, false);
                 messageService.send(player, "setting-updated", "{prefix}{good}Setting updated.");
             }
             case "animation-duration" -> openEditorInput(player, false, "Animation Duration",
@@ -300,7 +326,8 @@ public class GuiManager {
                 }
                 saveConfigValue("settings.animation.duration-ticks", value);
                 logAdminSetting(player, "settings.animation.duration-ticks", value);
-                openAdminEditor(player);
+                plugin.getEditorSounds().save(player);
+                openAdminEditor(player, false);
             });
             case "frame-interval" -> openEditorInput(player, false, "Frame Interval",
                     String.valueOf(config.getAnimationFrameIntervalTicks()), "1", "unlimited",
@@ -311,7 +338,8 @@ public class GuiManager {
                 }
                 saveConfigValue("settings.animation.frame-interval-ticks", value);
                 logAdminSetting(player, "settings.animation.frame-interval-ticks", value);
-                openAdminEditor(player);
+                plugin.getEditorSounds().save(player);
+                openAdminEditor(player, false);
             });
             default -> {
             }
@@ -328,6 +356,7 @@ public class GuiManager {
                         onSubmit.accept(input);
                         messageService.send(player, "prompt-saved", "{prefix}{good}Saved setting.");
                     } catch (IllegalArgumentException exception) {
+                        plugin.getEditorSounds().error(player);
                         String reason = exception.getMessage() == null || exception.getMessage().isBlank()
                                 ? "Invalid value" : exception.getMessage();
                         messageService.send(player, "prompt-invalid", "{prefix}{bad}{reason}", Map.of("reason", reason));
@@ -335,9 +364,12 @@ public class GuiManager {
                     }
                 }, () -> {
                     messageService.send(player, "prompt-cancelled", "{prefix}{bad}Edit cancelled.");
-                    openAdminEditor(player);
+                    plugin.getEditorSounds().back(player);
+                    openAdminEditor(player, false);
                 });
-        if (!openedNative) {
+        if (openedNative) {
+            plugin.getEditorSounds().open(player);
+        } else {
             warnAdminFallbackOnce(player, core);
         }
         plugin.fileLogger().info("Admin editor input opened. player=" + player.getName() + ", setting=" + setting
@@ -536,7 +568,7 @@ public class GuiManager {
         if (meta == null) {
             return;
         }
-        meta.setLore(CycleOptions.lore(currentValue, options).stream()
+        meta.setLore(CycleOptions.lore(messageService, currentValue, options).stream()
                 .map(line -> messageService.renderTemplate(line, Collections.emptyMap()))
                 .toList());
         item.setItemMeta(meta);
@@ -632,6 +664,8 @@ public class GuiManager {
             if (viewer == null || !viewer.isOnline()) {
                 continue;
             }
+            plugin.getGuiSounds().open(viewer);
+            plugin.sounds().play(viewer, "coinflip.matched");
             viewer.openInventory(inventory);
             viewers.add(viewer.getUniqueId());
             playerToSession.put(viewer.getUniqueId(), sessionId);
@@ -882,6 +916,7 @@ public class GuiManager {
     private void sendResolutionMessages(FlipResolution resolution) {
         Player winner = Bukkit.getPlayer(resolution.winnerId());
         if (winner != null) {
+            plugin.sounds().play(winner, "coinflip.won");
             messageService.send(winner, "flip-win", "{prefix}{good}Won against {theme}{opponent}{good}. Payout {theme}${payout}{good}. {muted}Tax {theme}${tax}{muted}.",
                     Map.of("opponent", resolution.loserName(), "payout", formatMoney(resolution.payout()),
                             "tax", formatMoney(resolution.tax())));
@@ -889,6 +924,7 @@ public class GuiManager {
 
         Player loser = Bukkit.getPlayer(resolution.loserId());
         if (loser != null) {
+            plugin.sounds().play(loser, "coinflip.lost");
             messageService.send(loser, "flip-lose", "{prefix}{bad}Lost against {theme}{opponent}{bad}. Lost {theme}${amount}{bad}.",
                     Map.of("opponent", resolution.winnerName(), "amount", formatMoney(resolution.flip().getStake())));
         }
@@ -928,6 +964,11 @@ public class GuiManager {
         for (UUID viewerId : session.viewers) {
             playerToSession.remove(viewerId);
         }
+    }
+
+    private void sendJoinError(Player player, String path, String fallback) {
+        messageService.send(player, path, fallback);
+        plugin.getGuiSounds().error(player);
     }
 
     private static final class AnimationSession {

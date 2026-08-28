@@ -12,6 +12,10 @@ import me.foesio.core.command.FoAdminCommand;
 import me.foesio.core.command.FoAdminMessages;
 import me.foesio.core.FoCoreContext;
 import me.foesio.core.FoPluginCore;
+import me.foesio.core.sound.FoAdminSounds;
+import me.foesio.core.sound.FoEditorSounds;
+import me.foesio.core.sound.FoGuiSounds;
+import me.foesio.core.sound.FoSoundService;
 import me.foesio.core.config.FoConfigDefaults;
 import me.foesio.core.logging.FoFileLogger;
 import me.foesio.core.message.FoMessageMigrations;
@@ -25,6 +29,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -48,6 +53,10 @@ public final class FoCoinflip extends JavaPlugin {
     private GuiManager guiManager;
     private CoinflipPlaceholderExpansion placeholderExpansion;
     private FoCoreContext core;
+    private FoSoundService sounds;
+    private FoEditorSounds editorSounds;
+    private FoGuiSounds guiSounds;
+    private FoAdminSounds adminSounds;
     private UpdateNoticeService updateNotices;
     private FoFileLogger fileLogger;
     private FoMetrics metrics;
@@ -88,7 +97,7 @@ public final class FoCoinflip extends JavaPlugin {
         this.coinflipManager = new CoinflipManager(this, this.economyService, this.statsRepository, this.pluginConfig);
         this.guiManager = new GuiManager(this, this.pluginConfig, this.messageService, this.coinflipManager, this.statsRepository,
                 () -> this.core);
-        this.updateNotices = this.core.createUpdateNotices(this.messageService, "focoinflip").start();
+        this.updateNotices = this.core.createUpdateNotices(this.messageService, "focoinflip", this.adminSounds).start();
 
         registerCommands();
         registerListeners();
@@ -148,6 +157,10 @@ public final class FoCoinflip extends JavaPlugin {
             this.fileLogger.warn("Command focoinflip is missing from plugin.yml.");
         }
 
+        registerAdminCommand();
+    }
+
+    private void registerAdminCommand() {
         FoAdminMessages adminMessages = FoAdminMessages.builder()
                 .generalNoPermission("no-permission", "{prefix}{bad}No permission.")
                 .generalPlayerOnly("player-only", "{prefix}{bad}Player-only command.")
@@ -163,6 +176,7 @@ public final class FoCoinflip extends JavaPlugin {
                 .updates(this.updateNotices)
                 .editor(this.guiManager::openAdminEditor)
                 .adminMessages(adminMessages)
+                .adminSounds(this.adminSounds)
                 .register();
     }
 
@@ -198,6 +212,22 @@ public final class FoCoinflip extends JavaPlugin {
         return result;
     }
 
+    public FoGuiSounds getGuiSounds() {
+        return guiSounds;
+    }
+
+    public FoEditorSounds getEditorSounds() {
+        return editorSounds;
+    }
+
+    public FoAdminSounds getAdminSounds() {
+        return adminSounds;
+    }
+
+    public FoSoundService sounds() {
+        return sounds;
+    }
+
     private FoReloadRegistry createReloadRegistry() {
         return FoReloadRegistry.create()
                 .add("config", () -> {
@@ -206,6 +236,8 @@ public final class FoCoinflip extends JavaPlugin {
                     refreshCoreContext();
                 })
                 .addMessages(this.messageService)
+                .add("sounds", () -> this.sounds.reload())
+                .add("admin integrations", this::refreshAdminIntegrations)
                 .add("logging", () -> this.fileLogger.configure(this.pluginConfig.isFileLoggingEnabled(), false));
     }
 
@@ -218,11 +250,23 @@ public final class FoCoinflip extends JavaPlugin {
         FoCoreContext previousCore = this.core;
         boolean metricsWereStarted = this.metrics != null;
         this.core = FoPluginCore.create(this);
+        this.sounds = this.core.createSounds();
+        this.editorSounds = FoEditorSounds.create(this.sounds);
+        this.guiSounds = FoGuiSounds.create(this.sounds);
+        this.adminSounds = FoAdminSounds.create(this.sounds);
         this.core.warnIfNativeDialogsUnavailable();
         if (previousCore != null) {
             previousCore.close();
         }
         this.metrics = metricsWereStarted ? this.core.metrics(BSTATS_PLUGIN_ID) : null;
+    }
+
+    private void refreshAdminIntegrations() {
+        if (this.updateNotices != null) {
+            HandlerList.unregisterAll(this.updateNotices);
+        }
+        this.updateNotices = this.core.createUpdateNotices(this.messageService, "focoinflip", this.adminSounds).start();
+        registerAdminCommand();
     }
 
     private FoMessageMigrations messageMigrations() {
