@@ -17,10 +17,18 @@ public class EconomyService {
     }
 
     public boolean has(Player player, double amount) {
+        return has((OfflinePlayer) player, amount);
+    }
+
+    public boolean has(OfflinePlayer player, double amount) {
         return economy.has(player, amount);
     }
 
     public boolean withdraw(Player player, double amount) {
+        return withdraw((OfflinePlayer) player, amount);
+    }
+
+    public boolean withdraw(OfflinePlayer player, double amount) {
         EconomyResponse response = economy.withdrawPlayer(player, amount);
         return isSuccess(response, "withdraw", player, amount);
     }
@@ -28,6 +36,10 @@ public class EconomyService {
     public boolean deposit(OfflinePlayer player, double amount) {
         EconomyResponse response = economy.depositPlayer(player, amount);
         return isSuccess(response, "deposit", player, amount);
+    }
+
+    public double balance(OfflinePlayer player) {
+        return economy.getBalance(player);
     }
 
     private boolean isSuccess(EconomyResponse response, String action, OfflinePlayer player, double amount) {

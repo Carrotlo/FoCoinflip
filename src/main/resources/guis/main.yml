@@ -66,7 +66,7 @@ items:
     slot: 47
     material: COMPARATOR
     amount: 1
-    name: "{theme}Sort"
+    name: ":comparator: {theme}&lSORT"
     # These labels become the FoPluginCore cycle-option lore lines.
     options:
       - value: amount-desc
@@ -84,10 +84,15 @@ items:
     slot: 48
     material: EMERALD
     amount: 1
-    name: "{theme}Create Coinflip"
+    name: ":emerald: {theme}&lCREATE COINFLIP"
     lore:
-      - "{white}Click to view command usage"
-      - "{white}Use /cf create <amount>"
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eⓘ Information ↓"
+      - "&7&l | &fUse {theme}/cf create <amount>"
+      - "&7&l | &fCreates a new coinflip."
+      - " "
+      - "{good}→ Click to Create Coinflip ←"
     glow: false
     item-flags: []
 
@@ -95,11 +100,16 @@ items:
     slot: 50
     material: BOOK
     amount: 1
-    name: "{theme}Your Stats"
+    name: ":book: {theme}&lYOUR STATS"
     lore:
-      - "{white}Total Won: {good}${won}"
-      - "{white}Total Lost: {bad}${lost}"
-      - "{white}Total Sum: {theme}${sum}"
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eⓘ Information ↓"
+      - "&7&l | &fTotal Won: {good}${won}"
+      - "&7&l | &fTotal Lost: {bad}${lost}"
+      - "&7&l | &fTotal Sum: {theme}${sum}"
+      - " "
+      - "{good}→ Click to View Stats ←"
     glow: false
     item-flags: []
 
@@ -107,8 +117,13 @@ items:
     slot: 49
     material: COMPASS
     amount: 1
-    name: "{theme}Refresh"
+    name: ":compass: {theme}&lREFRESH"
     lore:
-      - "{white}Refresh the current page"
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eⓘ Information ↓"
+      - "&7&l | &fRefreshes the current page."
+      - " "
+      - "{good}→ Click to Refresh ←"
     glow: false
     item-flags: []

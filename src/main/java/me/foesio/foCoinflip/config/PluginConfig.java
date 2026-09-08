@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Objects;
 import me.foesio.core.config.ResourceFiles;
 import me.foesio.foCoinflip.FoCoinflip;
 import org.bukkit.configuration.ConfigurationSection;
@@ -147,6 +148,9 @@ public class PluginConfig {
             changed |= migrateLegacyContentSlots(configuration);
             changed |= migrateLegacyNavigation(configuration);
             changed |= migrateLegacyRefreshLayout(configuration);
+            if (defaults != null) {
+                changed |= migrateDefaultMainStyle(configuration, defaults);
+            }
         }
         if (defaults != null) {
             changed |= mergeMissing(configuration, defaults);
@@ -155,6 +159,37 @@ public class PluginConfig {
             saveYaml(file, configuration, path);
         }
         return configuration;
+    }
+
+    private boolean migrateDefaultMainStyle(ConfigurationSection configuration, YamlConfiguration defaults) {
+        boolean changed = false;
+        changed |= replaceExactDefault(configuration, defaults, "items.sort.name", "{theme}Sort");
+        changed |= replaceExactDefault(configuration, defaults, "items.create.name", "{theme}Create Coinflip");
+        changed |= replaceExactDefault(configuration, defaults, "items.create.lore", List.of(
+                "{white}Click to view command usage",
+                "{white}Use /cf create <amount>"));
+        changed |= replaceExactDefault(configuration, defaults, "items.stats.name", "{theme}Your Stats");
+        changed |= replaceExactDefault(configuration, defaults, "items.stats.lore", List.of(
+                "{white}Total Won: {good}${won}",
+                "{white}Total Lost: {bad}${lost}",
+                "{white}Total Sum: {theme}${sum}"));
+        changed |= replaceExactDefault(configuration, defaults, "items.refresh.name", "{theme}Refresh");
+        changed |= replaceExactDefault(configuration, defaults, "items.refresh.lore", List.of(
+                "{white}Refresh the current page"));
+        return changed;
+    }
+
+    private boolean replaceExactDefault(ConfigurationSection configuration, YamlConfiguration defaults,
+            String path, Object oldValue) {
+        if (!configuration.isSet(path) || !Objects.equals(configuration.get(path), oldValue) || !defaults.isSet(path)) {
+            return false;
+        }
+        Object newValue = defaults.get(path);
+        if (Objects.equals(configuration.get(path), newValue)) {
+            return false;
+        }
+        configuration.set(path, newValue);
+        return true;
     }
 
     private void mergeDefaultConfig() {

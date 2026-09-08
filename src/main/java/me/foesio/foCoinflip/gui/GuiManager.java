@@ -15,6 +15,7 @@ import java.util.regex.Pattern;
 import me.foesio.core.FoCoreContext;
 import me.foesio.core.dialog.DialogButton;
 import me.foesio.core.dialog.TextDialogRequest;
+import me.foesio.core.dialog.DialogIcons;
 import me.foesio.core.editor.CycleOption;
 import me.foesio.core.editor.CycleOptions;
 import me.foesio.core.editor.EditorDialogInputs;
@@ -24,6 +25,8 @@ import me.foesio.core.editor.EditorMenuHolder;
 import me.foesio.core.editor.EditorSaveResult;
 import me.foesio.core.editor.EditorSettingSaver;
 import me.foesio.core.gui.GuiButtonConfig;
+import me.foesio.core.gui.FoButtonStyle;
+import me.foesio.core.gui.GuiTitles;
 import me.foesio.core.number.LargeNumberParser;
 import me.foesio.foCoinflip.CoinflipManager;
 import me.foesio.foCoinflip.config.PluginConfig;
@@ -121,29 +124,29 @@ public class GuiManager {
 
         MainGuiHolder holder = new MainGuiHolder(page);
         Inventory inventory = Bukkit.createInventory(holder, inventorySize,
-                messageService.renderTemplate(config.getMainGuiTitle(), Map.of()));
+                GuiTitles.format(config.getMainGuiTitle()));
 
-        fillBackground(inventory, gui);
-        fillCoinflipPage(inventory, holder, activeFlips, page, slots);
+        fillBackground(player, inventory, gui);
+        fillCoinflipPage(player, inventory, holder, activeFlips, page, slots);
 
         if (page > 0) {
             int previousSlot = configuredSlot(gui, "navigation.previous-slot", 45, inventorySize, "main previous");
             if (previousSlot >= 0) {
-                inventory.setItem(previousSlot, buttons.previousPage(page, maxPage));
+                inventory.setItem(previousSlot, buttons.previousPage(player, page, maxPage));
             }
         }
 
         if (page < maxPage) {
             int nextSlot = configuredSlot(gui, "navigation.next-slot", 53, inventorySize, "main next");
             if (nextSlot >= 0) {
-                inventory.setItem(nextSlot, buttons.nextPage(page, maxPage));
+                inventory.setItem(nextSlot, buttons.nextPage(player, page, maxPage));
             }
         }
 
-        setConfiguredCycleItem(inventory, gui, "items.sort", sortMode, sortOptions, Material.COMPARATOR);
-        setConfiguredItem(inventory, gui, "items.create", Collections.emptyMap(), Material.EMERALD);
-        setConfiguredItem(inventory, gui, "items.refresh", Collections.emptyMap(), Material.COMPASS);
-        setConfiguredItem(inventory, gui, "items.stats", statsTokens(player), Material.BOOK);
+        setConfiguredCycleItem(player, inventory, gui, "items.sort", sortMode, sortOptions, Material.COMPARATOR);
+        setConfiguredItem(player, inventory, gui, "items.create", Collections.emptyMap(), Material.EMERALD);
+        setConfiguredItem(player, inventory, gui, "items.refresh", Collections.emptyMap(), Material.COMPASS);
+        setConfiguredItem(player, inventory, gui, "items.stats", statsTokens(player), Material.BOOK);
 
         player.openInventory(inventory);
     }
@@ -163,26 +166,21 @@ public class GuiManager {
                 messageService.renderTemplate(config.getAdminGuiTitle(), Map.of()),
                 ADMIN_GUI_ROWS)
                 .filler(EditorItemFactory.filler());
-        editor.action(10, "tax-percent").item(10, settingItem(Material.PAPER, "Tax Percent",
-                List.of("{white}Current: {theme}" + config.getTaxPercent() + "%", "{muted}Click to edit")));
-        editor.action(11, "min-bet").item(11, settingItem(Material.EMERALD, "Min Bet",
-                List.of("{white}Current: {theme}$" + formatMoney(config.getMinBet()), "{muted}Click to edit")));
-        editor.action(12, "max-bet").item(12, settingItem(Material.DIAMOND, "Max Bet",
-                List.of("{white}Current: {theme}$" + formatMoney(config.getMaxBet()), "{muted}Click to edit")));
-        editor.action(13, "compact-money-format").item(13, settingItem(Material.GOLD_INGOT, "Compact Money Format",
-                List.of(config.isCompactMoneyFormat() ? "{good}Enabled" : "{bad}Disabled",
-                        "{white}Example: {theme}$" + MoneyUtil.format(10_100D, true),
-                        "{muted}Click to toggle")));
-        editor.action(14, "lock-animation-gui").item(14, settingItem(Material.LEVER, "Lock Animation GUI",
-                List.of(config.isLockAnimationGui() ? "{good}Enabled" : "{bad}Disabled", "{muted}Click to toggle")));
-        editor.action(15, "announce-result").item(15, settingItem(Material.BELL, "Announce Result",
-                List.of(config.isAnnounceCoinflipResult() ? "{good}Enabled" : "{bad}Disabled", "{muted}Click to toggle")));
-        editor.action(16, "animation-duration").item(16, settingItem(Material.CLOCK, "Animation Duration",
+        editor.action(10, "tax-percent").button(10, Material.PAPER, "Tax Percent",
+                List.of("{white}Current: {theme}" + config.getTaxPercent() + "%", "{muted}Click to edit"), "edit the tax percentage");
+        editor.action(11, "min-bet").button(11, Material.EMERALD, "Min Bet",
+                List.of("{white}Current: {theme}$" + formatMoney(config.getMinBet()), "{muted}Click to edit"), "edit the minimum bet");
+        editor.action(12, "max-bet").button(12, Material.DIAMOND, "Max Bet",
+                List.of("{white}Current: {theme}$" + formatMoney(config.getMaxBet()), "{muted}Click to edit"), "edit the maximum bet");
+        editor.action(13, "compact-money-format").toggle(13, "Compact Money Format", config.isCompactMoneyFormat());
+        editor.action(14, "lock-animation-gui").toggle(14, "Lock Animation GUI", config.isLockAnimationGui());
+        editor.action(15, "announce-result").toggle(15, "Announce Result", config.isAnnounceCoinflipResult());
+        editor.action(16, "animation-duration").button(16, Material.CLOCK, "Animation Duration",
                 List.of("{white}Current: {theme}" + config.getAnimationDurationTicks() + " ticks",
-                        "{muted}Click to edit")));
-        editor.action(19, "frame-interval").item(19, settingItem(Material.REPEATER, "Frame Interval",
+                        "{muted}Click to edit"), "edit the animation duration");
+        editor.action(19, "frame-interval").button(19, Material.REPEATER, "Frame Interval",
                 List.of("{white}Current: {theme}" + config.getAnimationFrameIntervalTicks() + " ticks",
-                        "{muted}Click to edit")));
+                        "{muted}Click to edit"), "edit the frame interval");
         editor.open(player);
         if (playOpenSound) {
             plugin.getEditorSounds().open(player);
@@ -226,6 +224,15 @@ public class GuiManager {
             plugin.getGuiSounds().click(player);
             player.closeInventory();
             sendCreateSuggestion(player);
+            return;
+        }
+
+        if (slot == configuredSlot(gui, "items.stats.slot", 50, inventorySize, "main stats")) {
+            plugin.getGuiSounds().click(player);
+            messageService.send(player, "stats",
+                    "{prefix}{theme}Your Stats {muted}| {good}Won: {theme}${won}{muted}, "
+                            + "{bad}Lost: {theme}${lost}{muted}, {good}Net: {theme}${sum}",
+                    statsTokens(player));
             return;
         }
 
@@ -457,10 +464,10 @@ public class GuiManager {
         return false;
     }
 
-    private void fillCoinflipPage(Inventory inventory, MainGuiHolder holder, List<Coinflip> coinflips, int page,
+    private void fillCoinflipPage(Player player, Inventory inventory, MainGuiHolder holder, List<Coinflip> coinflips, int page,
             List<Integer> slots) {
         int start = page * slots.size();
-        ItemStack filler = configuredItem(config.mainGui(), "items.entry-filler", Collections.emptyMap(),
+        ItemStack filler = configuredItemForViewer(player, config.mainGui(), "items.entry-filler", Collections.emptyMap(),
                 Material.LIGHT_GRAY_STAINED_GLASS_PANE);
         for (int slot : slots) {
             inventory.setItem(slot, filler.clone());
@@ -474,7 +481,7 @@ public class GuiManager {
 
             Coinflip coinflip = coinflips.get(index);
             int slot = slots.get(i);
-            inventory.setItem(slot, coinflipItem(coinflip));
+            inventory.setItem(slot, coinflipItem(player, coinflip));
             holder.bindSlot(slot, coinflip.getId());
         }
     }
@@ -526,8 +533,8 @@ public class GuiManager {
         return coinflips.stream().sorted(comparator).toList();
     }
 
-    private ItemStack coinflipItem(Coinflip coinflip) {
-        ItemStack item = configuredItem(config.mainGui(), "coinflip-item",
+    private ItemStack coinflipItem(Player player, Coinflip coinflip) {
+        ItemStack item = configuredItemForViewer(player, config.mainGui(), "coinflip-item",
                 Map.of("player", coinflip.getCreatorName(), "amount", formatMoney(coinflip.getStake())),
                 Material.PLAYER_HEAD);
         ItemMeta itemMeta = item.getItemMeta();
@@ -537,7 +544,10 @@ public class GuiManager {
 
         applySkullOwner(meta, coinflip.getCreatorId(), coinflip.getCreatorName());
         item.setItemMeta(meta);
-        return item;
+        // Skull ownership is applied after the configured metadata. Re-run
+        // Core's viewer-aware renderer so a configured :map: (or any other
+        // valid token) cannot fall back to literal text during that mutation.
+        return DialogIcons.forViewer(player, item);
     }
 
     private Map<String, String> statsTokens(Player player) {
@@ -555,7 +565,7 @@ public class GuiManager {
                 lore.stream().map(line -> messageService.renderTemplate(line, Map.of())).toList());
     }
 
-    private void setConfiguredCycleItem(Inventory inventory, FileConfiguration gui, String path, String currentValue,
+    private void setConfiguredCycleItem(Player player, Inventory inventory, FileConfiguration gui, String path, String currentValue,
             List<CycleOption> options, Material fallbackMaterial) {
         ConfigurationSection section = gui.getConfigurationSection(path);
         int slot = configuredSlot(gui, path + ".slot", -1, inventory.getSize(), path);
@@ -563,14 +573,23 @@ public class GuiManager {
             return;
         }
 
-        ItemStack item = configuredItem(gui, path, Collections.emptyMap(), fallbackMaterial);
+        ItemStack item = configuredItemForViewer(player, gui, path, Collections.emptyMap(), fallbackMaterial);
         ItemMeta meta = item.getItemMeta();
         if (meta == null) {
             return;
         }
-        meta.setLore(CycleOptions.lore(messageService, currentValue, options).stream()
-                .map(line -> messageService.renderTemplate(line, Collections.emptyMap()))
-                .toList());
+        List<String> renderedLore = FoButtonStyle.buttonLore(CycleOptions.information(messageService, currentValue, options), "cycle").stream()
+                .map(line -> messageService.renderTemplateForViewer(player, line, Collections.emptyMap()))
+                .toList();
+        List<net.kyori.adventure.text.Component> loreComponents = renderedLore.stream()
+                .map(line -> DialogIcons.render(player, line))
+                .toList();
+        String configuredName = section.getString("name", " ");
+        String renderedName = messageService.renderTemplateForViewer(player, configuredName, Collections.emptyMap());
+        if (!DialogIcons.applyItemMeta(meta, player, DialogIcons.render(player, renderedName), loreComponents)) {
+            meta.setDisplayName(DialogIcons.fallbackText(renderedName));
+            meta.setLore(renderedLore.stream().map(DialogIcons::fallbackText).toList());
+        }
         item.setItemMeta(meta);
         inventory.setItem(slot, item);
     }
@@ -656,7 +675,7 @@ public class GuiManager {
             displaySlot = inventorySize / 2;
         }
         Inventory inventory = Bukkit.createInventory(new AnimationHolder(sessionId), inventorySize,
-                messageService.renderTemplate(config.getAnimationGuiTitle(), Map.of()));
+                GuiTitles.format(config.getAnimationGuiTitle()));
         fillAnimationBackground(inventory);
 
         Set<UUID> viewers = new HashSet<>();
@@ -688,7 +707,11 @@ public class GuiManager {
     }
 
     private void fillAnimationBackground(Inventory inventory) {
-        fillBackground(inventory, config.animationGui());
+        FileConfiguration gui = config.animationGui();
+        ItemStack filler = configuredItem(gui, "items.filler", Collections.emptyMap(), Material.GRAY_STAINED_GLASS_PANE);
+        for (int i = 0; i < inventory.getSize(); i++) {
+            inventory.setItem(i, filler.clone());
+        }
     }
 
     private void tickAnimation(UUID sessionId) {
@@ -758,29 +781,47 @@ public class GuiManager {
 
         applySkullOwner(meta, resolution.winnerId(), resolution.winnerName());
         item.setItemMeta(meta);
+        // This item is shared by all animation viewers, so it must remain in
+        // the null-viewer-safe fallback form rather than using one player's
+        // client capabilities for the whole inventory.
         return item;
     }
 
-    private void fillBackground(Inventory inventory, FileConfiguration gui) {
-        ItemStack filler = configuredItem(gui, "items.filler", Collections.emptyMap(), Material.GRAY_STAINED_GLASS_PANE);
+    private void fillBackground(Player player, Inventory inventory, FileConfiguration gui) {
+        ItemStack filler = configuredItemForViewer(player, gui, "items.filler", Collections.emptyMap(),
+                Material.GRAY_STAINED_GLASS_PANE);
         for (int i = 0; i < inventory.getSize(); i++) {
             inventory.setItem(i, filler);
         }
     }
 
-    private void setConfiguredItem(Inventory inventory, FileConfiguration gui, String path, Map<String, String> tokens,
+    private void setConfiguredItem(Player player, Inventory inventory, FileConfiguration gui, String path, Map<String, String> tokens,
             Material fallbackMaterial) {
         int slot = configuredSlot(gui, path + ".slot", -1, inventory.getSize(), path);
         if (slot < 0) {
             return;
         }
-        inventory.setItem(slot, configuredItem(gui, path, tokens, fallbackMaterial));
+        inventory.setItem(slot, configuredItemForViewer(player, gui, path, tokens, fallbackMaterial));
+    }
+
+    private ItemStack configuredItemForViewer(Player player, FileConfiguration gui, String path,
+            Map<String, String> tokens, Material fallbackMaterial) {
+        return DialogIcons.forViewer(player, configuredItem(player, gui, path, tokens, fallbackMaterial));
     }
 
     private ItemStack configuredItem(FileConfiguration gui, String path, Map<String, String> tokens, Material fallbackMaterial) {
+        return configuredItem(null, gui, path, tokens, fallbackMaterial);
+    }
+
+    private ItemStack configuredItem(Player viewer, FileConfiguration gui, String path, Map<String, String> tokens,
+            Material fallbackMaterial) {
         ConfigurationSection section = gui.getConfigurationSection(path);
         if (section == null) {
-            return namedItem(fallbackMaterial, messageService.renderTemplate("{theme}" + fallbackMaterial.name(), Map.of()), List.of());
+            String fallbackName = "{theme}" + fallbackMaterial.name();
+            String renderedFallback = viewer == null
+                    ? messageService.renderTemplate(fallbackName, Map.of())
+                    : messageService.renderTemplateForViewer(viewer, fallbackName, Map.of());
+            return namedItem(fallbackMaterial, renderedFallback, List.of());
         }
 
         Material material = material(section.getString("material"), fallbackMaterial, path);
@@ -791,10 +832,19 @@ public class GuiManager {
             return item;
         }
 
-        meta.setDisplayName(messageService.renderTemplate(section.getString("name", " "), tokens));
+        String name = section.getString("name", " ");
+        String renderedName = viewer == null
+                ? messageService.renderTemplateForItem(name, tokens)
+                : messageService.renderTemplateForViewer(viewer, name, tokens);
         List<String> lore = section.getStringList("lore");
-        if (!lore.isEmpty()) {
-            meta.setLore(lore.stream().map(line -> messageService.renderTemplate(line, tokens)).toList());
+        List<String> renderedLore = lore.stream()
+                    .map(line -> viewer == null
+                            ? messageService.renderTemplateForItem(line, tokens)
+                            : messageService.renderTemplateForViewer(viewer, line, tokens))
+                    .toList();
+        if (!DialogIcons.applyItemMeta(meta, viewer, renderedName, renderedLore)) {
+            meta.setDisplayName(DialogIcons.fallbackText(renderedName));
+            meta.setLore(renderedLore.stream().map(DialogIcons::fallbackText).toList());
         }
         if (section.contains("custom-model-data")) {
             int customModelData = section.getInt("custom-model-data");
@@ -931,6 +981,9 @@ public class GuiManager {
     }
 
     private void announceIfNeeded(FlipResolution resolution) {
+        if (coinflipManager.consumeSuppressedAnnouncement(resolution.flip().getId())) {
+            return;
+        }
         if (!config.isAnnounceCoinflipResult()) {
             return;
         }

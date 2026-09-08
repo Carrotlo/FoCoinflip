@@ -76,6 +76,7 @@ public final class FoCoinflip extends JavaPlugin {
         this.legacyMessagesPendingMigration = !new File(getDataFolder(), "messages.yml").isFile();
         this.messageService = FoMessageService.load(this, messageMigrations());
         this.legacyMessagesPendingMigration = false;
+        migrateSprites();
 
         Economy economy = resolveEconomy();
         if (economy == null) {
@@ -135,6 +136,23 @@ public final class FoCoinflip extends JavaPlugin {
 
     public FoFileLogger fileLogger() {
         return fileLogger;
+    }
+
+    /**
+     * Public integration access for optional addons such as FoDiscordBot
+     * integrations. The returned manager is only available while the plugin
+     * is enabled and its economy has initialized successfully.
+     */
+    public CoinflipManager getCoinflipManager() {
+        return coinflipManager;
+    }
+
+    public PluginConfig getPluginConfig() {
+        return pluginConfig;
+    }
+
+    public EconomyService getEconomyService() {
+        return economyService;
     }
 
     private Economy resolveEconomy() {
@@ -273,6 +291,21 @@ public final class FoCoinflip extends JavaPlugin {
         return FoMessageMigrations.create()
                 .add(this::migrateLegacyMessageValues)
                 .build();
+    }
+
+    private void migrateSprites() {
+        messageService.migrateToVersion(core.migrations(), 1, config -> {
+            boolean changed = false;
+            changed |= FoMessageService.addMissingToken(config, "tokens.prefix", ":gold_nugget:", null);
+            changed |= FoMessageService.addMissingToken(config, "flip-created", ":emerald:");
+            changed |= FoMessageService.addMissingToken(config, "flip-deleted", ":lava_bucket:");
+            changed |= FoMessageService.addMissingToken(config, "admin-reload", ":emerald:");
+            changed |= FoMessageService.addMissingToken(config, "admin-reload-failed", ":redstone:");
+            changed |= FoMessageService.addMissingToken(config, "editor-opened", ":book:");
+            changed |= FoMessageService.addMissingToken(config, "prompt-saved", ":emerald:");
+            changed |= FoMessageService.addMissingToken(config, "prompt-invalid", ":redstone:");
+            return true;
+        });
     }
 
     private boolean migrateLegacyMessageValues(FileConfiguration messages) {
