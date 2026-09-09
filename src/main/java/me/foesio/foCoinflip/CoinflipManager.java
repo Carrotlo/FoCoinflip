@@ -12,10 +12,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import me.foesio.foCoinflip.api.CoinflipResolvedEvent;
 import me.foesio.foCoinflip.config.PluginConfig;
-import me.foesio.foCoinflip.economy.EconomyService;
 import me.foesio.foCoinflip.model.Coinflip;
 import me.foesio.foCoinflip.model.FlipResolution;
 import me.foesio.foCoinflip.stats.StatsRepository;
+import me.foesio.core.economy.VaultEconomyBridge;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
@@ -54,7 +54,7 @@ public class CoinflipManager {
     }
 
     private final FoCoinflip plugin;
-    private final EconomyService economyService;
+    private final VaultEconomyBridge economyService;
     private final StatsRepository statsRepository;
     private final PluginConfig config;
 
@@ -62,7 +62,7 @@ public class CoinflipManager {
     private final Map<UUID, UUID> activeByCreator = new ConcurrentHashMap<>();
     private final Set<UUID> suppressedAnnouncementIds = new HashSet<>();
 
-    public CoinflipManager(FoCoinflip plugin, EconomyService economyService, StatsRepository statsRepository, PluginConfig config) {
+    public CoinflipManager(FoCoinflip plugin, VaultEconomyBridge economyService, StatsRepository statsRepository, PluginConfig config) {
         this.plugin = plugin;
         this.economyService = economyService;
         this.statsRepository = statsRepository;

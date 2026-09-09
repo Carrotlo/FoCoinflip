@@ -3,7 +3,6 @@ package me.foesio.foCoinflip;
 import java.io.File;
 import me.foesio.foCoinflip.command.CoinflipCommand;
 import me.foesio.foCoinflip.config.PluginConfig;
-import me.foesio.foCoinflip.economy.EconomyService;
 import me.foesio.foCoinflip.gui.GuiManager;
 import me.foesio.foCoinflip.listener.CoinflipListener;
 import me.foesio.foCoinflip.stats.StatsRepository;
@@ -12,6 +11,7 @@ import me.foesio.core.command.FoAdminCommand;
 import me.foesio.core.command.FoAdminMessages;
 import me.foesio.core.FoCoreContext;
 import me.foesio.core.FoPluginCore;
+import me.foesio.core.economy.VaultEconomyBridge;
 import me.foesio.core.sound.FoAdminSounds;
 import me.foesio.core.sound.FoEditorSounds;
 import me.foesio.core.sound.FoGuiSounds;
@@ -30,10 +30,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.event.HandlerList;
-import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
-
-import net.milkbowl.vault.economy.Economy;
 
 public final class FoCoinflip extends JavaPlugin {
 
@@ -47,7 +44,7 @@ public final class FoCoinflip extends JavaPlugin {
     private PluginConfig pluginConfig;
     private FoMessageService messageService;
     private boolean legacyMessagesPendingMigration;
-    private EconomyService economyService;
+    private VaultEconomyBridge economyService;
     private StatsRepository statsRepository;
     private CoinflipManager coinflipManager;
     private GuiManager guiManager;
@@ -78,16 +75,14 @@ public final class FoCoinflip extends JavaPlugin {
         this.legacyMessagesPendingMigration = false;
         migrateSprites();
 
-        Economy economy = resolveEconomy();
-        if (economy == null) {
+        this.economyService = this.core.createVaultEconomy();
+        if (!this.economyService.isAvailable()) {
             getLogger().severe("Vault economy provider not found. Disabling plugin.");
             this.fileLogger.error("Vault economy provider not found. Disabling plugin.", null);
             Bukkit.getPluginManager().disablePlugin(this);
             return;
         }
-        this.fileLogger.info("Vault economy provider hooked: " + economy.getName());
-
-        this.economyService = new EconomyService(this, economy);
+        this.fileLogger.info("Vault economy provider hooked.");
         this.statsRepository = new StatsRepository(this, this.pluginConfig);
         try {
             this.statsRepository.initialize();
@@ -151,16 +146,8 @@ public final class FoCoinflip extends JavaPlugin {
         return pluginConfig;
     }
 
-    public EconomyService getEconomyService() {
+    public VaultEconomyBridge getEconomyService() {
         return economyService;
-    }
-
-    private Economy resolveEconomy() {
-        RegisteredServiceProvider<Economy> rsp = getServer().getServicesManager().getRegistration(Economy.class);
-        if (rsp == null) {
-            return null;
-        }
-        return rsp.getProvider();
     }
 
     private void registerCommands() {
@@ -254,6 +241,11 @@ public final class FoCoinflip extends JavaPlugin {
                     refreshCoreContext();
                 })
                 .addMessages(this.messageService)
+                .add("economy", () -> {
+                    if (!this.economyService.reload()) {
+                        throw new IllegalStateException("Vault economy provider not found.");
+                    }
+                })
                 .add("sounds", () -> this.sounds.reload())
                 .add("admin integrations", this::refreshAdminIntegrations)
                 .add("logging", () -> this.fileLogger.configure(this.pluginConfig.isFileLoggingEnabled(), false));
