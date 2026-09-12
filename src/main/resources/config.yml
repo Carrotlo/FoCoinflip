@@ -9,7 +9,7 @@ settings:
   # Percent removed from the total pot before payout. Range: 0-100.
   tax-percent: 0.0
 
-  # Minimum allowed bet. Player/admin input supports k/m/b/t and full words, e.g. 50k, 1.5m, or 1 billion.
+  # Minimum allowed bet. Player/admin input supports K through Td and full words, e.g. 50k, 1.5m, or 1Qa.
   min-bet: 100.0
 
   # Maximum allowed bet.
@@ -21,8 +21,8 @@ settings:
   # If true, resolved coinflips broadcast the winner message from messages.yml.
   announce-coinflip-result: true
 
-  # If true, displayed money values use compact K/M/B/T formatting with 2 decimals.
-  compact-money-format: false
+  # If true, displayed money values use compact K through Td formatting.
+  compact-money-format: true
 
   animation:
     # Total animation length in ticks. 20 ticks = 1 second. Minimum: 20.

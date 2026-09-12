@@ -31,7 +31,7 @@ flip-win: "{prefix}:emerald: {good}Won against {theme}{opponent}{good}. Payout {
 flip-lose: "{prefix}:redstone: {bad}Lost against {theme}{opponent}{bad}. Lost {theme}${amount}{bad}."
 announce: "{prefix}{theme}{winner}{muted} won against {theme}{loser}{muted} for {theme}${payout}{muted}."
 stats: "{prefix}{theme}Your Stats {muted}| {good}Won: {theme}${won}{muted}, {bad}Lost: {theme}${lost}{muted}, {good}Net: {theme}${sum}"
-create-command-hint: "{prefix}{muted}Create with {theme}/cf create <amount>{muted}, e.g. {white}50k{muted}, {white}1m{muted}, or {white}1 billion"
+create-command-hint: "{prefix}{muted}Create with {theme}/cf create <amount>{muted}, e.g. {white}50k{muted}, {white}1m{muted}, or {white}1Qa"
 
 admin-reload: "{prefix}:emerald: {good}Reloaded config, messages, and public GUIs."
 admin-reload-failed: "{prefix}:redstone: {bad}Reload failed at {step}: {error}."

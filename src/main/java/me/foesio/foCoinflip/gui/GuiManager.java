@@ -276,7 +276,7 @@ public class GuiManager {
                 openAdminEditor(player, false);
             });
             case "min-bet" -> openEditorInput(player, true, "Min Bet", MoneyUtil.raw(config.getMinBet()), "0",
-                    MoneyUtil.raw(config.getMaxBet()), "a positive money amount, like 50k, 1m, or 1 billion", input -> {
+                    MoneyUtil.raw(config.getMaxBet()), "a positive money amount, like 50k, 1m, or 1Qa", input -> {
                 double value = parseAmount(input, "Min bet must be a valid amount");
                 if (value < 0) {
                     throw new IllegalArgumentException("Min bet must be at least 0");
@@ -290,7 +290,7 @@ public class GuiManager {
                 openAdminEditor(player, false);
             });
             case "max-bet" -> openEditorInput(player, true, "Max Bet", MoneyUtil.raw(config.getMaxBet()),
-                    MoneyUtil.raw(config.getMinBet()), "unlimited", "a money amount, like 1m, 1b, or 1 trillion", input -> {
+                    MoneyUtil.raw(config.getMinBet()), "unlimited", "a money amount, like 1m, 1b, or 1Td", input -> {
                 double value = parseAmount(input, "Max bet must be a valid amount");
                 if (value < config.getMinBet()) {
                     throw new IllegalArgumentException("Max bet cannot be below min bet");
@@ -396,7 +396,7 @@ public class GuiManager {
         body.add(messageService.renderTemplate("{muted}Accepted range: {theme}" + currency + "{min}{muted} to {theme}"
                 + currency + "{max}{muted}.", replacements));
         if (money) {
-            body.add(messageService.renderTemplate("{muted}Use k, m, b, or t suffixes for large values.", replacements));
+            body.add(messageService.renderTemplate("{muted}Use K through Td suffixes for large values.", replacements));
         }
 
         return new TextDialogRequest(
@@ -620,7 +620,7 @@ public class GuiManager {
 
     private void sendCreateSuggestion(Player player) {
         messageService.send(player, "create-command-hint",
-                "{prefix}{muted}Create with {theme}/cf create <amount>{muted}, e.g. {white}50k{muted}, {white}1m{muted}, or {white}1 billion");
+                "{prefix}{muted}Create with {theme}/cf create <amount>{muted}, e.g. {white}50k{muted}, {white}1m{muted}, or {white}1Qa");
     }
 
     private double parseDouble(String input, String error) {
@@ -988,15 +988,12 @@ public class GuiManager {
             return;
         }
 
-        String line = messageService.render("announce",
-                "{prefix}{theme}{winner}{muted} won against {theme}{loser}{muted} for {theme}${payout}{muted}.",
-                Map.of(
-                        "winner", resolution.winnerName(),
-                        "loser", resolution.loserName(),
-                        "payout", formatMoney(resolution.payout()),
-                        "tax", formatMoney(resolution.tax()),
-                        "pot", formatMoney(resolution.pot())));
-        Bukkit.broadcastMessage(line);
+        messageService.broadcastConfigured("announce", Map.of(
+                "winner", resolution.winnerName(),
+                "loser", resolution.loserName(),
+                "payout", formatMoney(resolution.payout()),
+                "tax", formatMoney(resolution.tax()),
+                "pot", formatMoney(resolution.pot())));
     }
 
     private String formatMoney(double amount) {

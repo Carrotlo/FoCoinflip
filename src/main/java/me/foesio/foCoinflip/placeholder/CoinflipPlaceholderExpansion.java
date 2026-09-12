@@ -63,6 +63,6 @@ public class CoinflipPlaceholderExpansion extends PlaceholderExpansion {
     }
 
     private String formatMoney(double amount) {
-        return MoneyUtil.format(amount, plugin.getConfig().getBoolean("settings.compact-money-format", false));
+        return MoneyUtil.format(amount, plugin.getConfig().getBoolean("settings.compact-money-format", true));
     }
 }

@@ -97,7 +97,7 @@ public class PluginConfig {
     }
 
     public boolean isCompactMoneyFormat() {
-        return raw().getBoolean("settings.compact-money-format", false);
+        return raw().getBoolean("settings.compact-money-format", true);
     }
 
     public int getAnimationDurationTicks() {
