@@ -31,6 +31,19 @@ flip-win: "{prefix}:emerald: {good}Won against {theme}{opponent}{good}. Payout {
 flip-lose: "{prefix}:redstone: {bad}Lost against {theme}{opponent}{bad}. Lost {theme}${amount}{bad}."
 announce: "{prefix}{theme}{winner}{muted} won against {theme}{loser}{muted} for {theme}${payout}{muted}."
 stats: "{prefix}{theme}Your Stats {muted}| {good}Won: {theme}${won}{muted}, {bad}Lost: {theme}${lost}{muted}, {good}Net: {theme}${sum}"
+gui-unavailable: "{prefix}{bad}The coinflip menu is temporarily unavailable."
+sort-options:
+  amount-desc: "Highest Amount"
+  amount-asc: "Lowest Amount"
+  newest: "Newest First"
+  oldest: "Oldest First"
+money-format:
+  locale: "en-US"
+  standard-pattern: "#,##0.00"
+  compact-base-pattern: "0.##"
+  compact-pattern: "0.00"
+  compact-template: "{value}{suffix}"
+  suffixes: ["K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc", "Ud", "Dd", "Td"]
 create-command-hint: "{prefix}{muted}Create with {theme}/cf create <amount>{muted}, e.g. {white}50k{muted}, {white}1m{muted}, or {white}1Qa"
 
 admin-reload: "{prefix}:emerald: {good}Reloaded config, messages, and public GUIs."

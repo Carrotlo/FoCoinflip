@@ -1,0 +1,214 @@
+title: "&8ᴄᴏɪɴꜰʟɪᴘ"
+rows: 6
+filler:
+  material: "GRAY_STAINED_GLASS_PANE"
+  amount: 1
+  name: " "
+  lore: []
+  glow: false
+  item-flags:
+    - "HIDE_ADDITIONAL_TOOLTIP"
+  enabled: true
+buttons:
+  previous:
+    slot: 45
+    material: "ARROW"
+    amount: 1
+    name: ":arrow: {theme}&lPREVIOUS PAGE"
+    lore:
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eⓘ Information ↓"
+      - "&7&l | &fPage {theme}{page}&f of {theme}{pages}&f."
+      - " "
+      - "{good}→ Click to View Previous Page ←"
+    glow: false
+    item-flags: []
+    enabled: true
+    action: "coinflip.previous"
+    states:
+      unavailable:
+        clickable: false
+        material: "ARROW"
+        amount: 1
+        name: "{muted}First Page"
+        lore: []
+        glow: false
+        item-flags: []
+  next:
+    slot: 53
+    material: "ARROW"
+    amount: 1
+    name: ":arrow: {theme}&lNEXT PAGE"
+    lore:
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eⓘ Information ↓"
+      - "&7&l | &fPage {theme}{page}&f of {theme}{pages}&f."
+      - " "
+      - "{good}→ Click to View Next Page ←"
+    glow: false
+    item-flags: []
+    enabled: true
+    action: "coinflip.next"
+    states:
+      unavailable:
+        clickable: false
+        material: "ARROW"
+        amount: 1
+        name: "{muted}Last Page"
+        lore: []
+        glow: false
+        item-flags: []
+  sort:
+    slot: 47
+    material: "COMPARATOR"
+    amount: 1
+    name: ":comparator: {theme}&lSORT"
+    lore:
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eⓘ Information ↓"
+      - "&7&l | &fOptions:"
+      - "{options}"
+      - " "
+      - "{good}→ Click to Cycle ←"
+    glow: false
+    item-flags: []
+    enabled: true
+    action: "coinflip.sort"
+    cycle:
+      selected-format: "&7&l | {theme}» {option}"
+      unselected-format: "&7&l | {white}• {option}"
+    states:
+      unavailable:
+        clickable: false
+        material: "COMPARATOR"
+        amount: 1
+        name: "{muted}Sort Unavailable"
+        lore: []
+        glow: false
+        item-flags: []
+  create:
+    slot: 48
+    material: "EMERALD"
+    amount: 1
+    name: ":emerald: {theme}&lCREATE COINFLIP"
+    lore:
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eⓘ Information ↓"
+      - "&7&l | &fUse {theme}/cf create <amount>"
+      - "&7&l | &fCreates a new coinflip."
+      - " "
+      - "{good}→ Click to Create Coinflip ←"
+    glow: false
+    item-flags: []
+    enabled: true
+    action: "coinflip.create"
+  stats:
+    slot: 49
+    material: "BOOK"
+    amount: 1
+    name: ":book: {theme}&lYOUR STATS"
+    lore:
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eⓘ Information ↓"
+      - "&7&l | &fTotal Won: {good}${won}"
+      - "&7&l | &fTotal Lost: {bad}${lost}"
+      - "&7&l | &fTotal Sum: {theme}${sum}"
+      - " "
+      - "{good}→ Click to View Stats ←"
+    glow: false
+    item-flags: []
+    enabled: true
+    action: "coinflip.stats"
+  refresh:
+    slot: 50
+    material: "COMPASS"
+    amount: 1
+    name: ":compass: {theme}&lREFRESH"
+    lore:
+      - "&8ʙᴜᴛᴛᴏɴ"
+      - " "
+      - "&eⓘ Information ↓"
+      - "&7&l | &fRefreshes the current page."
+      - " "
+      - "{good}→ Click to Refresh ←"
+    glow: false
+    item-flags: []
+    enabled: true
+    action: "coinflip.refresh"
+entries:
+  coinflips:
+    slots:
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 19
+      - 20
+      - 21
+      - 23
+      - 24
+      - 25
+      - 28
+      - 29
+      - 30
+      - 31
+      - 32
+      - 33
+      - 34
+    item:
+      material: "PLAYER_HEAD"
+      amount: 1
+      name: "{theme}{player}'s Coinflip"
+      lore:
+        - "{white}Bet: {theme}${amount}"
+        - "{white}Click to join"
+      custom-model-data: 0
+      glow: false
+      item-flags: []
+    empty-item:
+      material: "LIGHT_GRAY_STAINED_GLASS_PANE"
+      amount: 1
+      name: " "
+      lore: []
+      glow: false
+      item-flags:
+        - "HIDE_ADDITIONAL_TOOLTIP"
+    actions:
+      left: "coinflip.join"
+      right: "coinflip.join"
+      shift-left: "coinflip.join"
+      shift-right: "coinflip.join"
+      drop: "coinflip.join"
+      control-drop: "coinflip.join"
+      middle: "coinflip.join"
+      number-key: "coinflip.join"
+      swap-offhand: "coinflip.join"
+  empty-notice:
+    slots:
+      - 22
+    item:
+      material: "BARRIER"
+      amount: 1
+      name: ":barrier: {muted}&lNO ACTIVE COINFLIPS"
+      lore:
+        - "&8ɪɴꜰᴏʀᴍᴀᴛɪᴏɴ"
+        - " "
+        - "&7&l | &fCreate one with {theme}/cf create <amount>&f."
+      glow: false
+      item-flags: []
+    empty-item:
+      material: "LIGHT_GRAY_STAINED_GLASS_PANE"
+      amount: 1
+      name: " "
+      lore: []
+      glow: false
+      item-flags:
+        - "HIDE_ADDITIONAL_TOOLTIP"

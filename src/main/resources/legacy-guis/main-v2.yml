@@ -1,0 +1,168 @@
+# Known intermediate public GUI v2 defaults for version-gated conversion.
+gui-version: 2
+title: '&8ᴄᴏɪɴꜰʟɪᴘ'
+rows: 6
+content-slots:
+- 10
+- 11
+- 12
+- 13
+- 14
+- 15
+- 16
+- 19
+- 20
+- 21
+- 22
+- 23
+- 24
+- 25
+- 28
+- 29
+- 30
+- 31
+- 32
+- 33
+- 34
+coinflip-item:
+  material: PLAYER_HEAD
+  amount: 1
+  name: '{theme}{player}''s Coinflip'
+  lore:
+  - '{white}Bet: {theme}${amount}'
+  - '{white}Click to join'
+  custom-model-data: 0
+  glow: false
+  item-flags: []
+empty-item:
+  slot: 22
+  material: BARRIER
+  amount: 1
+  name: ':barrier: {muted}&lNO ACTIVE COINFLIPS'
+  lore:
+  - '&8ɪɴꜰᴏʀᴍᴀᴛɪᴏɴ'
+  - ' '
+  - '&7&l | &fCreate one with {theme}/cf create <amount>&f.'
+  glow: false
+  item-flags: []
+items:
+  filler:
+    material: GRAY_STAINED_GLASS_PANE
+    amount: 1
+    name: ' '
+    lore: []
+    glow: false
+    item-flags:
+    - HIDE_ADDITIONAL_TOOLTIP
+  entry-filler:
+    material: LIGHT_GRAY_STAINED_GLASS_PANE
+    amount: 1
+    name: ' '
+    lore: []
+    glow: false
+    item-flags:
+    - HIDE_ADDITIONAL_TOOLTIP
+  previous:
+    slot: 45
+    material: ARROW
+    amount: 1
+    name: ':arrow: {theme}&lPREVIOUS PAGE'
+    lore:
+    - '&8ʙᴜᴛᴛᴏɴ'
+    - ' '
+    - '&eⓘ Information ↓'
+    - '&7&l | &fPage {theme}{page}&f of {theme}{pages}&f.'
+    - ' '
+    - '{good}→ Click to View Previous Page ←'
+    glow: false
+    item-flags: []
+  next:
+    slot: 53
+    material: ARROW
+    amount: 1
+    name: ':arrow: {theme}&lNEXT PAGE'
+    lore:
+    - '&8ʙᴜᴛᴛᴏɴ'
+    - ' '
+    - '&eⓘ Information ↓'
+    - '&7&l | &fPage {theme}{page}&f of {theme}{pages}&f.'
+    - ' '
+    - '{good}→ Click to View Next Page ←'
+    glow: false
+    item-flags: []
+  sort:
+    slot: 47
+    material: COMPARATOR
+    amount: 1
+    name: ':comparator: {theme}&lSORT'
+    lore:
+    - '&8ʙᴜᴛᴛᴏɴ'
+    - ' '
+    - '&eⓘ Information ↓'
+    - '{options}'
+    - ' '
+    - '{good}→ Click to Cycle ←'
+    selected-option-format: '&7&l | {good}→ &f{option}'
+    option-format: '&7&l | &f{option}'
+    options:
+    - value: amount-desc
+      label: Highest Amount
+    - value: amount-asc
+      label: Lowest Amount
+    - value: newest
+      label: Newest First
+    - value: oldest
+      label: Oldest First
+    glow: false
+    item-flags: []
+  create:
+    slot: 48
+    material: EMERALD
+    amount: 1
+    name: ':emerald: {theme}&lCREATE COINFLIP'
+    lore:
+    - '&8ʙᴜᴛᴛᴏɴ'
+    - ' '
+    - '&eⓘ Information ↓'
+    - '&7&l | &fUse {theme}/cf create <amount>'
+    - '&7&l | &fCreates a new coinflip.'
+    - ' '
+    - '{good}→ Click to Create Coinflip ←'
+    glow: false
+    item-flags: []
+  stats:
+    slot: 50
+    material: BOOK
+    amount: 1
+    name: ':book: {theme}&lYOUR STATS'
+    lore:
+    - '&8ʙᴜᴛᴛᴏɴ'
+    - ' '
+    - '&eⓘ Information ↓'
+    - '&7&l | &fTotal Won: {good}${won}'
+    - '&7&l | &fTotal Lost: {bad}${lost}'
+    - '&7&l | &fTotal Sum: {theme}${sum}'
+    - ' '
+    - '{good}→ Click to View Stats ←'
+    glow: false
+    item-flags: []
+  refresh:
+    slot: 49
+    material: COMPASS
+    amount: 1
+    name: ':compass: {theme}&lREFRESH'
+    lore:
+    - '&8ʙᴜᴛᴛᴏɴ'
+    - ' '
+    - '&eⓘ Information ↓'
+    - '&7&l | &fRefreshes the current page.'
+    - ' '
+    - '{good}→ Click to Refresh ←'
+    glow: false
+    item-flags: []
+  close:
+    slot: 51
+    material: BARRIER
+    name: '{bad}Close'
+    lore:
+    - '{white}Click to close'

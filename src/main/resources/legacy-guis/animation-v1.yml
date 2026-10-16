@@ -1,0 +1,41 @@
+# Public coinflip animation GUI.
+gui-version: 1
+title: "&8ꜰʟɪᴘᴘɪɴɢ..."
+rows: 3
+result-slot: 13
+
+rolling-item:
+  material: PLAYER_HEAD
+  amount: 1
+  name: "{theme}Flipping Coin..."
+  lore:
+    - "{white}Current side: {theme}{player}"
+    - "{white}Bet: {theme}${amount}"
+  custom-model-data: 0
+  glow: false
+  item-flags: []
+
+result-item:
+  material: PLAYER_HEAD
+  amount: 1
+  name: "{good}{winner} won!"
+  lore:
+    - "{white}Winner: {theme}{winner}"
+    - "{white}Loser: {theme}{loser}"
+    - "{white}Pot: {theme}${pot}"
+    - "{white}Tax: {theme}${tax}"
+    - "{white}Payout: {theme}${payout}"
+  custom-model-data: 0
+  glow: true
+  item-flags:
+    - HIDE_ADDITIONAL_TOOLTIP
+
+items:
+  filler:
+    material: GRAY_STAINED_GLASS_PANE
+    amount: 1
+    name: " "
+    lore: []
+    glow: false
+    item-flags:
+      - HIDE_ADDITIONAL_TOOLTIP

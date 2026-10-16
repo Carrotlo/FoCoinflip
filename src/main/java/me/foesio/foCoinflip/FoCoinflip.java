@@ -1,8 +1,12 @@
 package me.foesio.foCoinflip;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import me.foesio.foCoinflip.command.CoinflipCommand;
 import me.foesio.foCoinflip.config.PluginConfig;
+import me.foesio.foCoinflip.config.CoinflipSoundOptions;
 import me.foesio.foCoinflip.gui.GuiManager;
 import me.foesio.foCoinflip.listener.CoinflipListener;
 import me.foesio.foCoinflip.stats.StatsRepository;
@@ -28,6 +32,7 @@ import java.util.Objects;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -44,6 +49,8 @@ public final class FoCoinflip extends JavaPlugin {
     private PluginConfig pluginConfig;
     private FoMessageService messageService;
     private boolean legacyMessagesPendingMigration;
+    private boolean legacyMessageMigrationPending;
+    private boolean legacyCompactMoneyDefault;
     private VaultEconomyBridge economyService;
     private StatsRepository statsRepository;
     private CoinflipManager coinflipManager;
@@ -62,18 +69,62 @@ public final class FoCoinflip extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        File existingConfig = new File(getDataFolder(), "config.yml");
+        File[] priorFiles = getDataFolder().listFiles();
+        boolean priorInstallation = priorFiles != null && priorFiles.length > 0;
+        YamlConfiguration priorConfig = existingConfig.isFile()
+                ? YamlConfiguration.loadConfiguration(existingConfig) : new YamlConfiguration();
+        boolean priorPublicSchema = priorConfig.getInt("public-gui-schema", 0) >= 1;
+        boolean priorPublicTextSchema = priorConfig.getInt("public-text-schema", 0) >= 1;
+        this.legacyCompactMoneyDefault = !priorPublicTextSchema
+                && isReleasedCompactMoneyDefault(priorConfig);
+        boolean legacyInlineGui = priorConfig.isConfigurationSection("gui.main")
+                || priorConfig.isConfigurationSection("gui.animation");
+        boolean installBundledSounds = CoinflipSoundOptions.shouldInstallBundled(getDataFolder(),
+                priorInstallation, priorPublicSchema, legacyInlineGui);
+        try {
+            backupPublicConfig(existingConfig.toPath(), priorPublicSchema, priorPublicTextSchema);
+        } catch (IOException exception) {
+            getLogger().severe("Could not back up config.yml before public UI migration: "
+                    + exception.getMessage());
+            Bukkit.getPluginManager().disablePlugin(this);
+            return;
+        }
         this.fileLogger = new FoFileLogger(this);
         this.pluginConfig = new PluginConfig(this);
         this.pluginConfig.load();
+        if (getConfig().getInt("public-gui-schema", 0) >= 1
+                && installBundledSounds) {
+            saveResource("sounds.yml", false);
+        }
         applyCoreConfigDefaults();
         refreshCoreContext();
         this.fileLogger.configure(this.pluginConfig.isFileLoggingEnabled(), true);
         this.fileLogger.info("Enabling FoCoinflip v" + getDescription().getVersion());
         this.metrics = this.core.metrics(BSTATS_PLUGIN_ID);
+        this.legacyMessageMigrationPending = !priorPublicTextSchema;
         this.legacyMessagesPendingMigration = !new File(getDataFolder(), "messages.yml").isFile();
-        this.messageService = FoMessageService.load(this, messageMigrations());
+        if (this.legacyMessageMigrationPending && !this.legacyMessagesPendingMigration) {
+            File messages = new File(getDataFolder(), "messages.yml");
+            File backup = new File(getDataFolder(), "messages.yml.gui-v0-backup");
+            if (!backup.exists()) {
+                try {
+                    Files.copy(messages.toPath(), backup.toPath(), StandardCopyOption.COPY_ATTRIBUTES);
+                } catch (IOException exception) {
+                    getLogger().severe("Could not back up messages.yml before migrating public text: "
+                            + exception.getMessage());
+                    Bukkit.getPluginManager().disablePlugin(this);
+                    return;
+                }
+            }
+        }
+        if (!priorInstallation && this.legacyMessagesPendingMigration) {
+            saveResource("messages.yml", false);
+        }
+        this.messageService = FoMessageService.loadPreservingRemovals(this, messageMigrations());
+        migratePublicMessageFields();
         this.legacyMessagesPendingMigration = false;
-        migrateSprites();
+        this.legacyMessageMigrationPending = false;
 
         this.economyService = this.core.createVaultEconomy();
         if (!this.economyService.isAvailable()) {
@@ -103,6 +154,9 @@ public final class FoCoinflip extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (this.guiManager != null) {
+            this.guiManager.closePublicGuis();
+        }
         if (this.fileLogger != null) {
             this.fileLogger.info("Disabling FoCoinflip.");
         }
@@ -186,10 +240,9 @@ public final class FoCoinflip extends JavaPlugin {
     }
 
     private void registerListeners() {
-        Bukkit.getPluginManager().registerEvents(
+        this.guiManager.startPublicGuis(
                 new CoinflipListener(this.coinflipManager, this.guiManager,
-                        () -> this.core),
-                this);
+                        () -> this.core));
         this.fileLogger.info("Listeners registered.");
     }
 
@@ -233,20 +286,34 @@ public final class FoCoinflip extends JavaPlugin {
         return sounds;
     }
 
+    public FoMessageService messages() {
+        return messageService;
+    }
+
     private FoReloadRegistry createReloadRegistry() {
         return FoReloadRegistry.create()
+                .add("public files validation", this::validatePublicFilesInstalled)
                 .add("config", () -> {
                     this.pluginConfig.load();
                     applyCoreConfigDefaults();
                     refreshCoreContext();
                 })
                 .addMessages(this.messageService)
+                .add("public GUIs", () -> {
+                    if (!this.guiManager.reloadPublicGuis()) {
+                        throw new IllegalStateException("Public GUI validation failed; previous cached menus remain active");
+                    }
+                })
                 .add("economy", () -> {
                     if (!this.economyService.reload()) {
                         throw new IllegalStateException("Vault economy provider not found.");
                     }
                 })
-                .add("sounds", () -> this.sounds.reload())
+                .add("sounds", () -> {
+                    if (!this.sounds.reloadChecked()) {
+                        throw new IllegalStateException("sounds.yml is invalid; previous sounds remain active");
+                    }
+                })
                 .add("admin integrations", this::refreshAdminIntegrations)
                 .add("logging", () -> this.fileLogger.configure(this.pluginConfig.isFileLoggingEnabled(), false));
     }
@@ -260,7 +327,7 @@ public final class FoCoinflip extends JavaPlugin {
         FoCoreContext previousCore = this.core;
         boolean metricsWereStarted = this.metrics != null;
         this.core = FoPluginCore.create(this);
-        this.sounds = this.core.createSounds();
+        this.sounds = FoSoundService.loadPreservingRemovals(this);
         this.editorSounds = FoEditorSounds.create(this.sounds);
         this.guiSounds = FoGuiSounds.create(this.sounds);
         this.adminSounds = FoAdminSounds.create(this.sounds);
@@ -285,22 +352,292 @@ public final class FoCoinflip extends JavaPlugin {
                 .build();
     }
 
-    private void migrateSprites() {
-        messageService.migrateToVersion(core.migrations(), 1, config -> {
-            boolean changed = false;
-            changed |= FoMessageService.addMissingToken(config, "tokens.prefix", ":gold_nugget:", null);
-            changed |= FoMessageService.addMissingToken(config, "flip-created", ":emerald:");
-            changed |= FoMessageService.addMissingToken(config, "flip-deleted", ":lava_bucket:");
-            changed |= FoMessageService.addMissingToken(config, "admin-reload", ":emerald:");
-            changed |= FoMessageService.addMissingToken(config, "admin-reload-failed", ":redstone:");
-            changed |= FoMessageService.addMissingToken(config, "editor-opened", ":book:");
-            changed |= FoMessageService.addMissingToken(config, "prompt-saved", ":emerald:");
-            changed |= FoMessageService.addMissingToken(config, "prompt-invalid", ":redstone:");
+    static void backupPublicConfig(java.nio.file.Path configFile, boolean guiCurrent,
+                                   boolean textCurrent) throws IOException {
+        if (!Files.isRegularFile(configFile) || guiCurrent && textCurrent) {
+            return;
+        }
+        java.nio.file.Path backup = configFile.resolveSibling("config.yml.gui-v0-backup");
+        try {
+            Files.copy(configFile, backup, StandardCopyOption.COPY_ATTRIBUTES);
+        } catch (java.nio.file.FileAlreadyExistsException retained) {
+            if (!Files.isRegularFile(backup)) {
+                throw new IOException("Existing public UI backup is not a file: " + backup, retained);
+            }
+            // Keep the original pre-upgrade copy across retries.
+        }
+    }
+
+    static boolean upgradeKnownPublicDefaults(YamlConfiguration owner, YamlConfiguration bundled) {
+        boolean changed = false;
+        changed |= replaceKnownDefault(owner, bundled, "tokens.prefix",
+                "{theme}FoCoinflip &8» {muted}");
+        changed |= replaceKnownDefault(owner, bundled, "flip-created",
+                "{prefix}{good}Created coinflip for {theme}${amount}{good}.");
+        changed |= replaceKnownDefault(owner, bundled, "flip-deleted",
+                "{prefix}{good}Deleted coinflip and refunded {theme}${amount}{good}.");
+        changed |= replaceKnownDefault(owner, bundled, "flip-win",
+                "{prefix}{good}Won against {theme}{opponent}{good}. Payout {theme}${payout}{good}. {muted}Tax {theme}${tax}{muted}.");
+        changed |= replaceKnownDefault(owner, bundled, "flip-lose",
+                "{prefix}{bad}Lost against {theme}{opponent}{bad}. Lost {theme}${amount}{bad}.");
+        changed |= replaceKnownDefault(owner, bundled, "create-command-hint",
+                "{prefix}{muted}Create with {theme}/cf create <amount>{muted}, e.g. {white}50k{muted}, {white}1m{muted}, or {white}1 billion");
+        changed |= replaceKnownDefault(owner, bundled, "admin-reload",
+                "{prefix}{good}Reloaded config, messages, and public GUIs.");
+        changed |= replaceKnownDefault(owner, bundled, "editor-opened",
+                "{prefix}{good}Editor opened.");
+        changed |= replaceKnownDefault(owner, bundled, "prompt-saved",
+                "{prefix}{good}Saved setting.");
+        changed |= replaceKnownDefault(owner, bundled, "prompt-invalid",
+                "{prefix}{bad}{reason}");
+        return changed;
+    }
+
+    private static boolean replaceKnownDefault(YamlConfiguration owner, YamlConfiguration bundled,
+                                               String path, String oldDefault) {
+        if (!owner.contains(path, true) || !Objects.equals(owner.get(path), oldDefault)) {
+            return false;
+        }
+        owner.set(path, bundled.get(path));
+        return true;
+    }
+
+    static boolean isReleasedCompactMoneyDefault(FileConfiguration priorConfig) {
+        Object version = priorConfig.get("config-version");
+        return version instanceof Number number && number.doubleValue() == 1.5D
+                && Boolean.FALSE.equals(priorConfig.get("settings.compact-money-format"));
+    }
+
+    private void migratePublicMessageFields() {
+        if (getConfig().getInt("public-text-schema", 0) >= 1) {
+            return;
+        }
+        YamlConfiguration bundled = YamlConfiguration.loadConfiguration(new java.io.InputStreamReader(
+                Objects.requireNonNull(getResource("messages.yml")), java.nio.charset.StandardCharsets.UTF_8));
+        java.util.function.Function<YamlConfiguration, Boolean> upgrade = owner -> {
+            boolean changed = upgradeKnownPublicDefaults(owner, bundled);
+            for (String key : bundled.getKeys(true)) {
+                if (!bundled.isConfigurationSection(key) || !owner.contains(key, true)
+                        || owner.isConfigurationSection(key)) {
+                    continue;
+                }
+                Object invalid = owner.get(key);
+                owner.set(key, null);
+                ConfigurationSection destination = owner.createSection(key);
+                ConfigurationSection source = bundled.getConfigurationSection(key);
+                for (String child : source.getKeys(true)) {
+                    if (!source.isConfigurationSection(child)) {
+                        destination.set(child, source.get(child));
+                    }
+                }
+                getLogger().warning("Public text migration messages.yml:" + key + " invalid " + invalid
+                        + "; using newest bundled section");
+                changed = true;
+            }
+            for (String key : bundled.getKeys(true)) {
+                if (bundled.isConfigurationSection(key) || !owner.contains(key, true)) {
+                    continue;
+                }
+                Object value = owner.get(key);
+                if (!validPublicTextValue(key, value)) {
+                    getLogger().warning("Public text migration messages.yml:" + key + " invalid " + value
+                            + "; using newest bundled default " + bundled.get(key));
+                    owner.set(key, bundled.get(key));
+                    changed = true;
+                }
+            }
+            for (String key : java.util.List.of("gui-unavailable", "sort-options.amount-desc",
+                    "sort-options.amount-asc", "sort-options.newest", "sort-options.oldest",
+                    "money-format.locale", "money-format.standard-pattern", "money-format.compact-base-pattern",
+                    "money-format.compact-pattern", "money-format.compact-template", "money-format.suffixes")) {
+                String sortId = key.startsWith("sort-options.") ? key.substring("sort-options.".length()) : null;
+                String inherited = sortId == null ? null : pluginConfig.legacySortLabels().get(sortId);
+                if (sortId != null && inherited != null && inherited.isEmpty()
+                        && this.legacyMessagesPendingMigration) {
+                    owner.set(key, null);
+                    changed = true;
+                    continue;
+                }
+                if (!owner.contains(key, true)) {
+                    if (inherited == null) {
+                        owner.set(key, bundled.get(key));
+                        changed = true;
+                    } else if (!inherited.isEmpty()) {
+                        owner.set(key, inherited);
+                        changed = true;
+                    }
+                }
+            }
+            return changed;
+        };
+        java.nio.file.Path messagesFile = getDataFolder().toPath().resolve("messages.yml");
+        java.nio.file.Path configFile = getDataFolder().toPath().resolve("config.yml");
+        java.nio.file.Path staged = null;
+        byte[] originalMessages = null;
+        byte[] originalConfig = null;
+        boolean installedReplacement = false;
+        try {
+            originalMessages = Files.readAllBytes(messagesFile);
+            originalConfig = Files.readAllBytes(configFile);
+            YamlConfiguration owner = new YamlConfiguration();
+            owner.load(messagesFile.toFile());
+            boolean alreadyCurrent = owner.isConfigurationSection("sort-options")
+                    && owner.isConfigurationSection("money-format")
+                    && !legacyMessagesPendingMigration;
+            if (alreadyCurrent) {
+                getLogger().warning("messages.yml has current public text sections without a schema marker;"
+                        + " preserving omitted keys and recording the current schema");
+            }
+            boolean changed = !alreadyCurrent && upgrade.apply(owner);
+            validatePublicMessages(owner, bundled);
+            if (changed) {
+                java.nio.file.Path backup = messagesFile.resolveSibling("messages.yml.gui-v0-backup");
+                if (Files.notExists(backup) && !legacyMessagesPendingMigration) {
+                    Files.write(backup, originalMessages);
+                }
+                staged = Files.createTempFile(messagesFile.getParent(), ".public-text-", ".yml");
+                Files.writeString(staged, owner.saveToString(), java.nio.charset.StandardCharsets.UTF_8);
+                replaceAtomically(staged, messagesFile);
+                installedReplacement = true;
+                this.legacyMessagesPendingMigration = false;
+                this.legacyMessageMigrationPending = false;
+                messageService.reload();
+            }
+            if (!alreadyCurrent && legacyCompactMoneyDefault) {
+                getConfig().set("settings.compact-money-format", true);
+            }
+            getConfig().set("public-text-schema", 1);
+            saveConfig();
+            if (YamlConfiguration.loadConfiguration(configFile.toFile()).getInt("public-text-schema", 0) != 1) {
+                throw new IOException("public-text-schema was not persisted");
+            }
+        } catch (IOException | org.bukkit.configuration.InvalidConfigurationException | RuntimeException failure) {
+            getLogger().severe("Public text migration failed; retaining prior files: " + failure.getMessage());
+            if (installedReplacement && originalMessages != null) {
+                try {
+                    restoreAtomically(messagesFile, originalMessages);
+                    messageService.reload();
+                } catch (IOException rollbackFailure) {
+                    getLogger().severe("Public text message rollback failed: " + rollbackFailure.getMessage());
+                }
+            }
+            if (originalConfig != null) {
+                try {
+                    restoreAtomically(configFile, originalConfig);
+                    reloadConfig();
+                } catch (IOException rollbackFailure) {
+                    getLogger().severe("Public text config rollback failed: " + rollbackFailure.getMessage());
+                }
+            }
+        } finally {
+            if (staged != null) {
+                try {
+                    Files.deleteIfExists(staged);
+                } catch (IOException cleanupFailure) {
+                    getLogger().warning("Could not remove staged public text file: " + cleanupFailure.getMessage());
+                }
+            }
+        }
+    }
+
+    private void validateMessagesInstalled() {
+        YamlConfiguration candidate = new YamlConfiguration();
+        try {
+            candidate.load(new File(getDataFolder(), "messages.yml"));
+        } catch (IOException | org.bukkit.configuration.InvalidConfigurationException exception) {
+            throw new IllegalStateException("messages.yml is invalid; previous messages remain active", exception);
+        }
+        YamlConfiguration bundled = YamlConfiguration.loadConfiguration(new java.io.InputStreamReader(
+                Objects.requireNonNull(getResource("messages.yml")), java.nio.charset.StandardCharsets.UTF_8));
+        validatePublicMessages(candidate, bundled);
+    }
+
+    private static void validatePublicMessages(YamlConfiguration candidate, YamlConfiguration bundled) {
+        for (String key : bundled.getKeys(true)) {
+            if (bundled.isConfigurationSection(key) && candidate.contains(key, true)
+                    && !candidate.isConfigurationSection(key)) {
+                throw new IllegalStateException("messages.yml:" + key
+                        + " must be a section; previous messages remain active");
+            }
+        }
+        for (String key : bundled.getKeys(true)) {
+            if (bundled.isConfigurationSection(key) || !candidate.contains(key, true)) {
+                continue;
+            }
+            Object value = candidate.get(key);
+            if (!validPublicTextValue(key, value)) {
+                throw new IllegalStateException("messages.yml:" + key + " has an invalid value; previous messages remain active");
+            }
+        }
+    }
+
+    private static void replaceAtomically(java.nio.file.Path staged, java.nio.file.Path target) throws IOException {
+        try {
+            Files.move(staged, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (java.nio.file.AtomicMoveNotSupportedException unavailable) {
+            Files.move(staged, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    static void restoreAtomically(java.nio.file.Path target, byte[] bytes) throws IOException {
+        java.nio.file.Path staged = Files.createTempFile(target.getParent(), ".public-text-rollback-", ".tmp");
+        try {
+            Files.write(staged, bytes);
+            replaceAtomically(staged, target);
+        } finally {
+            Files.deleteIfExists(staged);
+        }
+    }
+
+    static boolean validPublicTextValue(String key, Object value) {
+        if (key.equals("money-format.suffixes")) {
+            return value instanceof java.util.List<?> list && list.stream().allMatch(String.class::isInstance);
+        }
+        if (key.startsWith("money-format.") || key.startsWith("sort-options.") || key.startsWith("tokens.")) {
+            if (!(value instanceof String text)) {
+                return false;
+            }
+            if (key.endsWith("-pattern")) {
+                try {
+                    new java.text.DecimalFormat(text);
+                } catch (IllegalArgumentException invalidPattern) {
+                    return false;
+                }
+            }
+            if (key.equals("money-format.locale")) {
+                try {
+                    new java.util.Locale.Builder().setLanguageTag(text).build();
+                } catch (java.util.IllformedLocaleException invalidLocale) {
+                    return false;
+                }
+            }
             return true;
-        });
+        }
+        return value instanceof String || value instanceof java.util.List<?> list
+                && list.stream().allMatch(String.class::isInstance);
+    }
+
+    private void validatePublicFilesInstalled() {
+        validateMessagesInstalled();
+        if (!sounds.validateInstalled()) {
+            throw new IllegalStateException("sounds.yml is invalid; previous sounds remain active");
+        }
+        YamlConfiguration soundCandidate = new YamlConfiguration();
+        try {
+            soundCandidate.load(new File(getDataFolder(), "sounds.yml"));
+        } catch (IOException | org.bukkit.configuration.InvalidConfigurationException exception) {
+            throw new IllegalStateException("sounds.yml is invalid; previous sounds remain active", exception);
+        }
+        CoinflipSoundOptions.cycleVariation(soundCandidate, CoinflipSoundOptions.bundled(this), false);
+        if (guiManager != null && !guiManager.validatePublicGuis()) {
+            throw new IllegalStateException("A public GUI is invalid; previous menus remain active");
+        }
     }
 
     private boolean migrateLegacyMessageValues(FileConfiguration messages) {
+        if (!legacyMessageMigrationPending) {
+            return false;
+        }
         boolean changed = false;
         if (this.legacyMessagesPendingMigration) {
             ConfigurationSection legacyMessages = this.pluginConfig.raw().getConfigurationSection("messages");
