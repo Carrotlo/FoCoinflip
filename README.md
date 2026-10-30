@@ -69,9 +69,7 @@ Main config areas: `file-logging`, `settings`.
 <details>
 <summary><strong>Developer API</strong></summary>
 
-### Maven dependency example
-
-Install the matching `FoCoinflip-2.5.jar` locally if it is not in your Maven repository. These coordinates do not claim a published artifact. Use `provided` scope so the server supplies FoCoinflip:
+Compile against the matching jar (`provided` in Maven, `compileOnly` in Gradle); install it locally if needed. Declare `FoCoinflip` in your plugin metadata (`softdepend` for an optional integration).
 
 ```xml
 <dependency>
@@ -82,110 +80,27 @@ Install the matching `FoCoinflip-2.5.jar` locally if it is not in your Maven rep
 </dependency>
 ```
 
-FoCoinflip provides `me.foesio.foCoinflip.api.CoinflipApi` through Bukkit's
-`ServicesManager`. A consumer compiles against the **matching FoCoinflip jar**
-as a provided dependency (`compileOnly` in Gradle); do not bundle FoCoinflip's
-classes into the consumer. Install a local jar into Maven first if needed:
-`mvn install:install-file -Dfile=FoCoinflip-2.5.jar -DgroupId=me.foesio -DartifactId=FoCoinflip -Dversion=2.5 -Dpackaging=jar`.
-Those coordinates describe a locally installed jar, not a published API repository.
-In the consumer's `plugin.yml`, add `softdepend: [FoCoinflip]` (or `depend`
-when required).
-
-~~~java
-if (Bukkit.getPluginManager().isPluginEnabled("FoCoinflip")) {
-    RegisteredServiceProvider<CoinflipApi> registration =
-            Bukkit.getServicesManager().getRegistration(CoinflipApi.class);
-    if (registration != null) {
-        CoinflipApi api = registration.getProvider();
-        List<CoinflipSnapshot> open = api.openFlips();
-        CoinflipApi.CreateOutcome paid = api.createForPlayer(player, 100);
-        CoinflipApi.CreateOutcome npc = api.createForNpc("Dealer", 100);
-    }
-}
-~~~
-
-Keep direct FoCoinflip class references in an integration class loaded only
-after the provider is present. Reacquire the service after FoCoinflip is re-enabled;
-it is unregistered on disable. Calling a retained service while disabled throws
-`IllegalStateException`. API calls must run on the primary server thread
-or, on Folia, the global tick thread; off-thread calls throw `IllegalStateException`.
-FoCoinflip does not move calls to another scheduler. API results report validation failures,
-event cancellation, unavailable flips and Vault errors. A successful join has
-settled and paid any real-player winner; no animation runs for external joins. Open flips exist
-only in memory. Paid player flips are refunded on creator quit or shutdown.
-
-`createForPlayer(OfflinePlayer, stake)` immediately withdraws the selected
-player's stake from their Vault account, even when that player did not issue a
-command. This is a trusted plugin API: the calling plugin must decide who may
-trigger it. The existing `create(UUID, name, stake)` has the same paid-player
-behavior for account-linked integrations. Both paths apply the configured bet
-limits, one-open-flip rule, and pre-create event.
-
-`createForNpc(name, stake)` opens a server-funded flip for a virtual NPC. Names
-are trimmed, case-insensitive for identity, and must be 1–32 characters using
-letters, digits, spaces, `_`, `.`, or `-`. The returned snapshot has
-`virtualCreator() == true`; its `creatorId()` is a stable virtual UUID, not a
-player account. The NPC has no Vault account or stats row. When a player joins,
-their stake is withdrawn as usual. A player win pays the normal after-tax pot
-from the server economy; an NPC win removes the player's stake from circulation.
-The resolution's `payout()` remains the calculated after-tax prize when the
-NPC wins, but no Vault account receives it.
-Cancelling or shutting down an NPC flip needs no refund; the closed event reports
-`isRefundSucceeded() == true` for that no-refund case, with `NPC_CANCEL` as
-the cancellation reason. Use `cancel(npc.flip().creatorId())`
-to remove an open NPC flip. One NPC name can have one open flip at a time.
-
-`openFlips()`, `openFlip(creatorId)` and `stats(playerId)` return snapshots.
-Stats are current cached **net** won, lost and difference. A missing player's
-stats are zero. SQLite writes happen asynchronously after a result.
-
-Events live in `me.foesio.foCoinflip.api`:
-
-- `CoinflipPreCreateEvent`: cancellable after bet validation, before any Vault transfer. `getSource()` identifies in-game or external requests; `isVirtualCreator()` identifies NPC flips.
-- `CoinflipOpenedEvent`: after stake withdrawal and insertion into the open list.
-- `CoinflipPreJoinEvent`: cancellable after a flip is claimed, before joiner withdrawal. It also exposes the request source.
-- `CoinflipResolvedEvent`: after payout and cached stats update; before the in-game animation or announcement. Use `getSnapshot()` for immutable values; `getResolution()` remains for existing consumers. `getSource()` identifies `IN_GAME` or `EXTERNAL`. `suppressCoreAnnouncement()` affects only the in-game broadcast.
-- `CoinflipClosedEvent`: after an open flip is removed due to cancellation, creator quit, shutdown or failed settlement. Its reason and `isRefundSucceeded()` report what happened; failed refunds still close the flip.
-
-Events are emitted on the mutation's calling thread; `isAsynchronous()` reflects
-whether Bukkit considers that thread primary. A listener on a region or async
-thread must schedule access to unrelated player/world state appropriately.
-Cancelled pre events leave the flip and balances unchanged. A resolved event
-means cached stats changed, not that their SQLite write has completed.
-
-~~~java
-@EventHandler
-public void onCoinflip(CoinflipResolvedEvent event) {
-    CoinflipResolutionSnapshot result = event.getSnapshot();
-    // Publish result.winnerId() and result.payout() to an external service.
-}
-~~~
-
-### Complete public API method index
-
-Signatures use short type names; import Fo types from this plugin's `api` package and Bukkit types from Bukkit.
-
-#### `CoinflipApi`
-
 ```java
-List<CoinflipSnapshot> openFlips();
-Optional<CoinflipSnapshot> openFlip(UUID);
-CoinflipStats stats(UUID);
-CoinflipApi.CreateOutcome create(UUID, String, double);
-CoinflipApi.CreateOutcome createForPlayer(OfflinePlayer, double);
-CoinflipApi.CreateOutcome createForNpc(String, double);
-CoinflipApi.CloseOutcome cancel(UUID);
-CoinflipApi.JoinOutcome join(UUID, String, UUID);
+import me.foesio.foCoinflip.api.CoinflipApi;
+import me.foesio.foCoinflip.api.CoinflipClosedEvent;
+
+CoinflipApi api = Bukkit.getServicesManager().load(CoinflipApi.class);
+if (api != null) api.openFlips();
+
+@EventHandler
+public void onCoinflipClosedEvent(CoinflipClosedEvent event) {
+    Bukkit.getLogger().info(event.getClass().getSimpleName());
+}
 ```
 
-**Other public contract types:** `CoinflipResolutionSnapshot`, `CoinflipSnapshot`, `CoinflipStats`.
+**API methods** (overloads grouped):
 
-### Complete Bukkit event index
+- `CoinflipApi`: `openFlips`, `openFlip`, `stats`, `create`, `createForPlayer`, `createForNpc`, `cancel`, `join`.
 
-- `CoinflipClosedEvent`.
-- `CoinflipOpenedEvent`.
-- `CoinflipPreCreateEvent`.
-- `CoinflipPreJoinEvent`.
-- `CoinflipResolvedEvent`.
+**Other API types:** `CoinflipResolutionSnapshot`, `CoinflipSnapshot`, `CoinflipStats`.
+
+**Events:** `CoinflipClosedEvent`, `CoinflipOpenedEvent`, `CoinflipPreCreateEvent`, `CoinflipPreJoinEvent`, `CoinflipResolvedEvent`.
+
+[Browse API source](src/main/java/me/foesio/foCoinflip/api) for signatures and event details.
 
 </details>
