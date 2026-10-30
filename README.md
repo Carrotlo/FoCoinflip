@@ -69,6 +69,19 @@ Main config areas: `file-logging`, `settings`.
 <details>
 <summary><strong>Developer API</strong></summary>
 
+### Maven dependency example
+
+Install the matching `FoCoinflip-2.5.jar` locally if it is not in your Maven repository. These coordinates do not claim a published artifact. Use `provided` scope so the server supplies FoCoinflip:
+
+```xml
+<dependency>
+  <groupId>me.foesio</groupId>
+  <artifactId>FoCoinflip</artifactId>
+  <version>2.5</version>
+  <scope>provided</scope>
+</dependency>
+```
+
 FoCoinflip provides `me.foesio.foCoinflip.api.CoinflipApi` through Bukkit's
 `ServicesManager`. A consumer compiles against the **matching FoCoinflip jar**
 as a provided dependency (`compileOnly` in Gradle); do not bundle FoCoinflip's
@@ -147,5 +160,32 @@ public void onCoinflip(CoinflipResolvedEvent event) {
     // Publish result.winnerId() and result.payout() to an external service.
 }
 ~~~
+
+### Complete public API method index
+
+Signatures use short type names; import Fo types from this plugin's `api` package and Bukkit types from Bukkit.
+
+#### `CoinflipApi`
+
+```java
+List<CoinflipSnapshot> openFlips();
+Optional<CoinflipSnapshot> openFlip(UUID);
+CoinflipStats stats(UUID);
+CoinflipApi.CreateOutcome create(UUID, String, double);
+CoinflipApi.CreateOutcome createForPlayer(OfflinePlayer, double);
+CoinflipApi.CreateOutcome createForNpc(String, double);
+CoinflipApi.CloseOutcome cancel(UUID);
+CoinflipApi.JoinOutcome join(UUID, String, UUID);
+```
+
+**Other public contract types:** `CoinflipResolutionSnapshot`, `CoinflipSnapshot`, `CoinflipStats`.
+
+### Complete Bukkit event index
+
+- `CoinflipClosedEvent`.
+- `CoinflipOpenedEvent`.
+- `CoinflipPreCreateEvent`.
+- `CoinflipPreJoinEvent`.
+- `CoinflipResolvedEvent`.
 
 </details>
