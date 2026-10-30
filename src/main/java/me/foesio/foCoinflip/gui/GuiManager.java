@@ -183,7 +183,9 @@ public class GuiManager {
         for (Map.Entry<Integer, Coinflip> entry : displayed.entrySet()) {
             ItemStack item = inventory.getItem(entry.getKey());
             if (item != null && item.getItemMeta() instanceof SkullMeta skull) {
-                applySkullOwner(skull, entry.getValue().getCreatorId(), entry.getValue().getCreatorName());
+                Coinflip listedFlip = entry.getValue();
+                applySkullOwner(skull, listedFlip.isVirtualCreator() ? null : listedFlip.getCreatorId(),
+                        listedFlip.getCreatorName());
                 item.setItemMeta(skull);
                 inventory.setItem(entry.getKey(), item);
             }
@@ -354,11 +356,12 @@ public class GuiManager {
             }
             case OWN_FLIP -> sendJoinError(player, "join-own");
             case INSUFFICIENT_FUNDS -> sendJoinError(player, "not-enough-money");
-            case ALREADY_IN_PROGRESS, NOT_FOUND -> {
+            case CANCELLED -> sendJoinError(player, "flip-join-denied");
+            case INVALID_FLIP_ID, ALREADY_IN_PROGRESS, NOT_FOUND -> {
                 sendJoinError(player, "flip-no-longer-available");
                 openMainMenu(player, page);
             }
-            case ECONOMY_ERROR -> sendJoinError(player, "economy-error");
+            case INVALID_PLAYER, ECONOMY_ERROR -> sendJoinError(player, "economy-error");
         }
     }
 
@@ -791,7 +794,8 @@ public class GuiManager {
     private ItemStack rollingItem(AnimationSession session) {
         boolean creatorFrame = session.frame % 2 == 0;
         String playerName = creatorFrame ? session.resolution.flip().getCreatorName() : session.resolution.joinerName();
-        UUID skullOwnerId = creatorFrame ? session.resolution.flip().getCreatorId() : session.resolution.joinerId();
+        UUID skullOwnerId = creatorFrame && session.resolution.flip().isVirtualCreator() ? null
+                : creatorFrame ? session.resolution.flip().getCreatorId() : session.resolution.joinerId();
 
         Map<String, String> tokens = new HashMap<>(session.presentationTokens);
         tokens.put("player", playerName);
@@ -814,7 +818,9 @@ public class GuiManager {
             return item;
         }
 
-        applySkullOwner(meta, resolution.winnerId(), resolution.winnerName());
+        applySkullOwner(meta, resolution.flip().isVirtualCreator()
+                && resolution.winnerId().equals(resolution.flip().getCreatorId()) ? null : resolution.winnerId(),
+                resolution.winnerName());
         item.setItemMeta(meta);
         // This item is shared by all animation viewers, so it must remain in
         // the null-viewer-safe fallback form rather than using one player's

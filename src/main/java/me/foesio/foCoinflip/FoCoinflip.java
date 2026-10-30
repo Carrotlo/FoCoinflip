@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import me.foesio.foCoinflip.command.CoinflipCommand;
+import me.foesio.foCoinflip.api.CoinflipApi;
 import me.foesio.foCoinflip.config.PluginConfig;
 import me.foesio.foCoinflip.config.CoinflipSoundOptions;
 import me.foesio.foCoinflip.gui.GuiManager;
@@ -36,6 +37,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.plugin.ServicePriority;
 
 public final class FoCoinflip extends JavaPlugin {
 
@@ -54,6 +56,7 @@ public final class FoCoinflip extends JavaPlugin {
     private VaultEconomyBridge economyService;
     private StatsRepository statsRepository;
     private CoinflipManager coinflipManager;
+    private CoinflipApi coinflipApi;
     private GuiManager guiManager;
     private CoinflipPlaceholderExpansion placeholderExpansion;
     private FoCoreContext core;
@@ -142,6 +145,7 @@ public final class FoCoinflip extends JavaPlugin {
             throw exception;
         }
         this.coinflipManager = new CoinflipManager(this, this.economyService, this.statsRepository, this.pluginConfig);
+        this.coinflipApi = new CoinflipApiService(this, this.coinflipManager, this.statsRepository);
         this.guiManager = new GuiManager(this, this.pluginConfig, this.messageService, this.coinflipManager, this.statsRepository,
                 () -> this.core);
         this.updateNotices = this.core.createUpdateNotices(this.messageService, "focoinflip", this.adminSounds).start();
@@ -149,11 +153,16 @@ public final class FoCoinflip extends JavaPlugin {
         registerCommands();
         registerListeners();
         registerPlaceholders();
+        getServer().getServicesManager().register(CoinflipApi.class, coinflipApi, this, ServicePriority.Normal);
         this.fileLogger.info("FoCoinflip enabled.");
     }
 
     @Override
     public void onDisable() {
+        if (this.coinflipApi != null) {
+            getServer().getServicesManager().unregister(CoinflipApi.class, this.coinflipApi);
+            this.coinflipApi = null;
+        }
         if (this.guiManager != null) {
             this.guiManager.closePublicGuis();
         }
@@ -194,6 +203,10 @@ public final class FoCoinflip extends JavaPlugin {
      */
     public CoinflipManager getCoinflipManager() {
         return coinflipManager;
+    }
+
+    boolean isFoliaServer() {
+        return core != null && core.scheduler().isFolia();
     }
 
     public PluginConfig getPluginConfig() {
@@ -349,7 +362,31 @@ public final class FoCoinflip extends JavaPlugin {
     private FoMessageMigrations messageMigrations() {
         return FoMessageMigrations.create()
                 .add(this::migrateLegacyMessageValues)
+                .add(this::migrateApiEventMessages)
                 .build();
+    }
+
+    private boolean migrateApiEventMessages(FileConfiguration messages) {
+        if (getConfig().getInt("api-events-text-schema", 0) >= 1) {
+            return false;
+        }
+        YamlConfiguration bundled = YamlConfiguration.loadConfiguration(new java.io.InputStreamReader(
+                Objects.requireNonNull(getResource("messages.yml")), java.nio.charset.StandardCharsets.UTF_8));
+        boolean changed = backfillApiEventMessages(messages, bundled);
+        getConfig().set("api-events-text-schema", 1);
+        saveConfig();
+        return changed;
+    }
+
+    static boolean backfillApiEventMessages(FileConfiguration messages, FileConfiguration bundled) {
+        boolean changed = false;
+        for (String key : java.util.List.of("flip-create-denied", "flip-join-denied")) {
+            if (!messages.contains(key, true)) {
+                messages.set(key, bundled.get(key));
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     static void backupPublicConfig(java.nio.file.Path configFile, boolean guiCurrent,

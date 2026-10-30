@@ -77,6 +77,18 @@ public class StatsRepository {
         queuePersistResolution(winnerId, loserId, winnerProfit, stake);
     }
 
+    /** Records only the real player's result against a virtual NPC. */
+    public void recordVirtualResolution(UUID playerId, boolean playerWon, double payout, double stake) {
+        if (playerWon) {
+            double profit = payout - stake;
+            statsCache.merge(playerId, CachedStats.netWon(profit), CachedStats::plus);
+            queuePersistResolution(playerId, null, profit, stake);
+        } else {
+            statsCache.merge(playerId, CachedStats.netLost(stake), CachedStats::plus);
+            queuePersistResolution(null, playerId, 0.0D, stake);
+        }
+    }
+
     private void queuePersistResolution(UUID winnerId, UUID loserId, double winnerProfit, double stake) {
         if (closed.get()) {
             plugin.fileLogger().warn("Stats write skipped because repository is closed. winnerUuid=" + winnerId
@@ -103,19 +115,21 @@ public class StatsRepository {
                     PreparedStatement loserUpdate = connection.prepareStatement(
                             "UPDATE player_stats SET net_lost = net_lost + ? WHERE uuid = ?")) {
 
-                insert.setString(1, winnerId.toString());
-                insert.executeUpdate();
+                if (winnerId != null) {
+                    insert.setString(1, winnerId.toString());
+                    insert.executeUpdate();
+                    winnerUpdate.setDouble(1, winnerProfit);
+                    winnerUpdate.setString(2, winnerId.toString());
+                    winnerUpdate.executeUpdate();
+                }
 
-                insert.setString(1, loserId.toString());
-                insert.executeUpdate();
-
-                winnerUpdate.setDouble(1, winnerProfit);
-                winnerUpdate.setString(2, winnerId.toString());
-                winnerUpdate.executeUpdate();
-
-                loserUpdate.setDouble(1, stake);
-                loserUpdate.setString(2, loserId.toString());
-                loserUpdate.executeUpdate();
+                if (loserId != null) {
+                    insert.setString(1, loserId.toString());
+                    insert.executeUpdate();
+                    loserUpdate.setDouble(1, stake);
+                    loserUpdate.setString(2, loserId.toString());
+                    loserUpdate.executeUpdate();
+                }
 
                 connection.commit();
             } catch (SQLException exception) {

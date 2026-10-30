@@ -119,6 +119,18 @@ public class CoinflipCommand implements CommandExecutor, TabCompleter {
             }
             case ALREADY_HAS_FLIP -> sendCreateError(player, "already-has-flip");
             case INSUFFICIENT_FUNDS -> sendCreateError(player, "not-enough-money");
+            case INVALID_PLAYER, INVALID_STAKE -> sendCreateError(player, "invalid-amount");
+            case BELOW_MIN -> {
+                ConfiguredPublicMessages.send(messageService, player, "below-min-bet",
+                        Map.of("min", formatMoney(config.getMinBet())));
+                plugin.sounds().play(player, "coinflip.error");
+            }
+            case ABOVE_MAX -> {
+                ConfiguredPublicMessages.send(messageService, player, "above-max-bet",
+                        Map.of("max", formatMoney(config.getMaxBet())));
+                plugin.sounds().play(player, "coinflip.error");
+            }
+            case CANCELLED -> sendCreateError(player, "flip-create-denied");
             case ECONOMY_ERROR -> sendCreateError(player, "economy-error");
         }
     }

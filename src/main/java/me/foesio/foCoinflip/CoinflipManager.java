@@ -1,16 +1,23 @@
 package me.foesio.foCoinflip;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Pattern;
 import me.foesio.foCoinflip.api.CoinflipResolvedEvent;
+import me.foesio.foCoinflip.api.CoinflipPreCreateEvent;
+import me.foesio.foCoinflip.api.CoinflipPreJoinEvent;
+import me.foesio.foCoinflip.api.CoinflipOpenedEvent;
+import me.foesio.foCoinflip.api.CoinflipClosedEvent;
 import me.foesio.foCoinflip.config.PluginConfig;
 import me.foesio.foCoinflip.model.Coinflip;
 import me.foesio.foCoinflip.model.FlipResolution;
@@ -21,12 +28,19 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 
 public class CoinflipManager {
+    private static final Pattern NPC_NAME = Pattern.compile("[A-Za-z0-9 _.-]{1,32}");
 
     public enum CreateResult {
         SUCCESS,
+        INVALID_PLAYER,
+        INVALID_STAKE,
+        BELOW_MIN,
+        ABOVE_MAX,
         ALREADY_HAS_FLIP,
         INSUFFICIENT_FUNDS,
-        ECONOMY_ERROR
+        CANCELLED,
+        ECONOMY_ERROR,
+        INVALID_NPC_NAME
     }
 
     public enum DeleteResult {
@@ -37,10 +51,13 @@ public class CoinflipManager {
 
     public enum JoinStatus {
         SUCCESS,
+        INVALID_PLAYER,
+        INVALID_FLIP_ID,
         NOT_FOUND,
         OWN_FLIP,
         INSUFFICIENT_FUNDS,
         ALREADY_IN_PROGRESS,
+        CANCELLED,
         ECONOMY_ERROR
     }
 
@@ -61,6 +78,7 @@ public class CoinflipManager {
     private final Map<UUID, Coinflip> activeById = new ConcurrentHashMap<>();
     private final Map<UUID, UUID> activeByCreator = new ConcurrentHashMap<>();
     private final Set<UUID> suppressedAnnouncementIds = new HashSet<>();
+    private boolean shuttingDown;
 
     public CoinflipManager(FoCoinflip plugin, VaultEconomyBridge economyService, StatsRepository statsRepository, PluginConfig config) {
         this.plugin = plugin;
@@ -70,49 +88,102 @@ public class CoinflipManager {
     }
 
     public synchronized CreateResponse createFlip(Player creator, double stake) {
-        return createFlip((OfflinePlayer) creator, stake);
+        if (creator == null) {
+            return new CreateResponse(CreateResult.INVALID_PLAYER, null);
+        }
+        return createFlip(creator.getUniqueId(), playerName(creator), stake,
+                CoinflipResolvedEvent.Source.IN_GAME, false);
     }
 
     /** Creates a flip for an online or offline economy account. */
     public synchronized CreateResponse createFlip(OfflinePlayer creator, double stake) {
         if (creator == null || creator.getUniqueId() == null) {
-            return new CreateResponse(CreateResult.ECONOMY_ERROR, null);
+            return new CreateResponse(CreateResult.INVALID_PLAYER, null);
         }
 
-        return createFlip(creator.getUniqueId(), playerName(creator), stake);
+        return createFlip(creator.getUniqueId(), playerName(creator), stake,
+                CoinflipResolvedEvent.Source.EXTERNAL, false);
     }
 
     /** Creates a flip with a trusted display name from an integration's account link. */
     public synchronized CreateResponse createFlip(UUID creatorId, String creatorName, double stake) {
-        if (creatorId == null || !validStake(stake)) {
+        return createFlip(creatorId, creatorName, stake, CoinflipResolvedEvent.Source.EXTERNAL, false);
+    }
+
+    /** Creates a flip funded by the server for a virtual NPC identity. */
+    public synchronized CreateResponse createNpcFlip(String npcName, double stake) {
+        String name = npcName == null ? null : npcName.trim();
+        if (name == null || !NPC_NAME.matcher(name).matches()) {
+            return new CreateResponse(CreateResult.INVALID_NPC_NAME, null);
+        }
+        UUID npcId = UUID.nameUUIDFromBytes(("focoinflip:npc:" + name.toLowerCase(Locale.ROOT))
+                .getBytes(StandardCharsets.UTF_8));
+        return createFlip(npcId, name, stake, CoinflipResolvedEvent.Source.EXTERNAL, true);
+    }
+
+    private CreateResponse createFlip(UUID creatorId, String creatorName, double stake,
+            CoinflipResolvedEvent.Source source, boolean virtualCreator) {
+        if (shuttingDown) {
             return new CreateResponse(CreateResult.ECONOMY_ERROR, null);
         }
+        if (creatorId == null) {
+            return new CreateResponse(CreateResult.INVALID_PLAYER, null);
+        }
+        if (!validStake(stake)) {
+            return new CreateResponse(CreateResult.INVALID_STAKE, null);
+        }
+        if (stake < config.getMinBet()) {
+            return new CreateResponse(CreateResult.BELOW_MIN, null);
+        }
+        if (stake > config.getMaxBet()) {
+            return new CreateResponse(CreateResult.ABOVE_MAX, null);
+        }
 
-        OfflinePlayer creator = Bukkit.getOfflinePlayer(creatorId);
-        String resolvedCreatorName = nonBlank(creatorName) == null ? playerName(creator) : creatorName;
+        OfflinePlayer creator = virtualCreator ? null : Bukkit.getOfflinePlayer(creatorId);
+        String resolvedCreatorName = virtualCreator ? creatorName
+                : nonBlank(creatorName) == null ? playerName(creator) : creatorName;
         if (hasOpenCreatorFlip(creatorId)) {
             plugin.fileLogger().debug("Create rejected: player already has an open coinflip. player=" + resolvedCreatorName);
             return new CreateResponse(CreateResult.ALREADY_HAS_FLIP, null);
         }
 
-        if (!economyService.has(creator, stake)) {
+        CoinflipPreCreateEvent preCreate = new CoinflipPreCreateEvent(creatorId, resolvedCreatorName, stake,
+                source, virtualCreator);
+        Bukkit.getPluginManager().callEvent(preCreate);
+        if (preCreate.isCancelled()) {
+            return new CreateResponse(CreateResult.CANCELLED, null);
+        }
+        if (shuttingDown) {
+            return new CreateResponse(CreateResult.ECONOMY_ERROR, null);
+        }
+        // A listener may have created a flip for this player during the pre event.
+        if (hasOpenCreatorFlip(creatorId)) {
+            return new CreateResponse(CreateResult.ALREADY_HAS_FLIP, null);
+        }
+
+        if (!economyService.isAvailable()) {
+            return new CreateResponse(CreateResult.ECONOMY_ERROR, null);
+        }
+        if (!virtualCreator && !economyService.has(creator, stake)) {
             plugin.fileLogger().debug("Create rejected: insufficient funds. player=" + resolvedCreatorName
                     + ", stake=" + stake);
             return new CreateResponse(CreateResult.INSUFFICIENT_FUNDS, null);
         }
 
-        if (!economyService.withdraw(creator, stake)) {
+        if (!virtualCreator && !economyService.withdraw(creator, stake)) {
             plugin.fileLogger().warn("Create failed: economy withdraw failed. player=" + resolvedCreatorName
                     + ", stake=" + stake);
             return new CreateResponse(CreateResult.ECONOMY_ERROR, null);
         }
 
         Coinflip coinflip = new Coinflip(UUID.randomUUID(), creatorId, resolvedCreatorName, stake,
-                System.currentTimeMillis());
+                System.currentTimeMillis(), virtualCreator);
         activeById.put(coinflip.getId(), coinflip);
         activeByCreator.put(creatorId, coinflip.getId());
         plugin.fileLogger().info("Coinflip created. player=" + resolvedCreatorName + ", stake=" + stake
                 + ", id=" + coinflip.getId());
+
+        Bukkit.getPluginManager().callEvent(new CoinflipOpenedEvent(CoinflipSnapshots.flip(coinflip)));
 
         return new CreateResponse(CreateResult.SUCCESS, coinflip);
     }
@@ -134,20 +205,19 @@ public class CoinflipManager {
         if (creatorId == null) {
             return new DeleteResponse(DeleteResult.NONE_FOUND, null);
         }
-        OfflinePlayer creator = Bukkit.getOfflinePlayer(creatorId);
-        String resolvedCreatorName = nonBlank(creatorName) == null ? playerName(creator) : creatorName;
         UUID coinflipId = activeByCreator.get(creatorId);
         if (coinflipId == null) {
-            plugin.fileLogger().debug("Delete rejected: no open coinflip. player=" + resolvedCreatorName);
+            plugin.fileLogger().debug("Delete rejected: no open coinflip. creatorUuid=" + creatorId);
             return new DeleteResponse(DeleteResult.NONE_FOUND, null);
         }
 
         Coinflip coinflip = activeById.get(coinflipId);
         if (coinflip == null) {
-            activeByCreator.remove(creatorId);
-            plugin.fileLogger().warn("Delete cleanup: stale creator index removed. player=" + resolvedCreatorName);
+            activeByCreator.remove(creatorId, coinflipId);
+            plugin.fileLogger().warn("Delete cleanup: stale creator index removed. creatorUuid=" + creatorId);
             return new DeleteResponse(DeleteResult.NONE_FOUND, null);
         }
+        String resolvedCreatorName = coinflip.getCreatorName();
 
         if (!coinflip.cancel()) {
             plugin.fileLogger().debug("Delete rejected: coinflip was not open. player=" + resolvedCreatorName
@@ -155,19 +225,23 @@ public class CoinflipManager {
             return new DeleteResponse(DeleteResult.NONE_FOUND, null);
         }
 
-        if (!economyService.deposit(creator, coinflip.getStake())) {
+        if (!coinflip.isVirtualCreator() && !economyService.deposit(
+                Bukkit.getOfflinePlayer(creatorId), coinflip.getStake())) {
             // Keep it removed to avoid dupes.
-            activeByCreator.remove(creatorId);
+            activeByCreator.remove(creatorId, coinflipId);
             activeById.remove(coinflipId);
             plugin.fileLogger().warn("Delete failed after cancel: refund failed. player=" + resolvedCreatorName
                     + ", stake=" + coinflip.getStake() + ", id=" + coinflipId);
+            fireClosed(coinflip, CoinflipClosedEvent.Reason.PLAYER_CANCEL, false);
             return new DeleteResponse(DeleteResult.ECONOMY_ERROR, coinflip);
         }
 
-        activeByCreator.remove(creatorId);
+        activeByCreator.remove(creatorId, coinflipId);
         activeById.remove(coinflipId);
-        plugin.fileLogger().info("Coinflip deleted and refunded. player=" + resolvedCreatorName
+        plugin.fileLogger().info("Coinflip deleted. creator=" + resolvedCreatorName
                 + ", stake=" + coinflip.getStake() + ", id=" + coinflipId);
+        fireClosed(coinflip, coinflip.isVirtualCreator()
+                ? CoinflipClosedEvent.Reason.NPC_CANCEL : CoinflipClosedEvent.Reason.PLAYER_CANCEL, true);
         return new DeleteResponse(DeleteResult.SUCCESS, coinflip);
     }
 
@@ -178,7 +252,7 @@ public class CoinflipManager {
     /** Joins a flip from an external integration without opening the in-game animation. */
     public synchronized JoinResponse joinFlipExternal(OfflinePlayer joiner, UUID coinflipId) {
         if (joiner == null || joiner.getUniqueId() == null) {
-            return new JoinResponse(JoinStatus.ECONOMY_ERROR, null);
+            return new JoinResponse(JoinStatus.INVALID_PLAYER, null);
         }
         return joinFlipExternal(joiner.getUniqueId(), playerName(joiner), coinflipId);
     }
@@ -186,7 +260,7 @@ public class CoinflipManager {
     /** Joins a flip with a trusted display name from an integration's account link. */
     public synchronized JoinResponse joinFlipExternal(UUID joinerId, String joinerName, UUID coinflipId) {
         if (joinerId == null) {
-            return new JoinResponse(JoinStatus.ECONOMY_ERROR, null);
+            return new JoinResponse(JoinStatus.INVALID_PLAYER, null);
         }
         OfflinePlayer joiner = Bukkit.getOfflinePlayer(joinerId);
         String resolvedJoinerName = nonBlank(joinerName) == null ? playerName(joiner) : joinerName;
@@ -196,15 +270,21 @@ public class CoinflipManager {
     private synchronized JoinResponse joinFlip(OfflinePlayer joiner, UUID coinflipId,
             CoinflipResolvedEvent.Source source) {
         if (joiner == null || joiner.getUniqueId() == null) {
-            return new JoinResponse(JoinStatus.ECONOMY_ERROR, null);
+            return new JoinResponse(JoinStatus.INVALID_PLAYER, null);
         }
         return joinFlip(joiner, playerName(joiner), coinflipId, source);
     }
 
     private synchronized JoinResponse joinFlip(OfflinePlayer joiner, String joinerName, UUID coinflipId,
             CoinflipResolvedEvent.Source source) {
-        if (joiner == null || joiner.getUniqueId() == null || coinflipId == null) {
+        if (shuttingDown) {
             return new JoinResponse(JoinStatus.ECONOMY_ERROR, null);
+        }
+        if (joiner == null || joiner.getUniqueId() == null) {
+            return new JoinResponse(JoinStatus.INVALID_PLAYER, null);
+        }
+        if (coinflipId == null) {
+            return new JoinResponse(JoinStatus.INVALID_FLIP_ID, null);
         }
         Coinflip coinflip = activeById.get(coinflipId);
         if (coinflip == null) {
@@ -225,7 +305,24 @@ public class CoinflipManager {
             return new JoinResponse(JoinStatus.ALREADY_IN_PROGRESS, null);
         }
 
+        CoinflipPreJoinEvent preJoin = new CoinflipPreJoinEvent(CoinflipSnapshots.flip(coinflip),
+                joiner.getUniqueId(), joinerName, source);
+        Bukkit.getPluginManager().callEvent(preJoin);
+        if (preJoin.isCancelled()) {
+            coinflip.reopen();
+            return new JoinResponse(JoinStatus.CANCELLED, null);
+        }
+        if (shuttingDown || activeById.get(coinflipId) != coinflip
+                || coinflip.getStatus() != Coinflip.Status.MATCHING) {
+            coinflip.reopen();
+            return new JoinResponse(JoinStatus.ECONOMY_ERROR, null);
+        }
+
         double stake = coinflip.getStake();
+        if (!economyService.isAvailable()) {
+            coinflip.reopen();
+            return new JoinResponse(JoinStatus.ECONOMY_ERROR, null);
+        }
         if (!economyService.has(joiner, stake)) {
             coinflip.reopen();
             plugin.fileLogger().debug("Join rejected: insufficient funds. player=" + joinerName
@@ -241,13 +338,13 @@ public class CoinflipManager {
         }
 
         activeById.remove(coinflip.getId());
-        activeByCreator.remove(coinflip.getCreatorId());
+        activeByCreator.remove(coinflip.getCreatorId(), coinflip.getId());
 
         boolean creatorWins = ThreadLocalRandom.current().nextBoolean();
         UUID winnerId = creatorWins ? coinflip.getCreatorId() : joiner.getUniqueId();
         UUID loserId = creatorWins ? joiner.getUniqueId() : coinflip.getCreatorId();
 
-        OfflinePlayer winner = Bukkit.getOfflinePlayer(winnerId);
+        OfflinePlayer winner = coinflip.isVirtualCreator() && creatorWins ? null : Bukkit.getOfflinePlayer(winnerId);
         String winnerName = creatorWins ? coinflip.getCreatorName() : joinerName;
         String loserName = creatorWins ? joinerName : coinflip.getCreatorName();
 
@@ -255,18 +352,26 @@ public class CoinflipManager {
         double tax = pot * (config.getTaxPercent() / 100.0D);
         double payout = Math.max(0.0D, pot - tax);
 
-        if (!economyService.deposit(winner, payout)) {
+        if (winner != null && !economyService.deposit(winner, payout)) {
             // Best effort rollback.
-            OfflinePlayer creatorPlayer = Bukkit.getOfflinePlayer(coinflip.getCreatorId());
-            economyService.deposit(creatorPlayer, stake);
-            economyService.deposit(joiner, stake);
+            boolean creatorRefunded = coinflip.isVirtualCreator()
+                    || economyService.deposit(Bukkit.getOfflinePlayer(coinflip.getCreatorId()), stake);
+            boolean joinerRefunded = economyService.deposit(joiner, stake);
+            coinflip.reopen();
+            coinflip.cancel();
             plugin.fileLogger().warn("Join failed: payout deposit failed, rollback attempted. winner=" + winnerName
                     + ", payout=" + payout + ", id=" + coinflipId);
+            fireClosed(coinflip, CoinflipClosedEvent.Reason.SETTLEMENT_FAILED,
+                    creatorRefunded && joinerRefunded);
             return new JoinResponse(JoinStatus.ECONOMY_ERROR, null);
         }
 
         coinflip.markResolved();
-        statsRepository.recordResolution(winnerId, loserId, payout, stake);
+        if (coinflip.isVirtualCreator()) {
+            statsRepository.recordVirtualResolution(joiner.getUniqueId(), !creatorWins, payout, stake);
+        } else {
+            statsRepository.recordResolution(winnerId, loserId, payout, stake);
+        }
 
         FlipResolution resolution = new FlipResolution(coinflip, joiner.getUniqueId(), joinerName, winnerId,
                 winnerName, loserId, loserName, pot, tax, payout);
@@ -275,7 +380,7 @@ public class CoinflipManager {
                 + ", tax=" + tax + ", payout=" + payout);
         CoinflipResolvedEvent resolvedEvent = new CoinflipResolvedEvent(resolution, source);
         Bukkit.getPluginManager().callEvent(resolvedEvent);
-        if (resolvedEvent.isCoreAnnouncementSuppressed()) {
+        if (source == CoinflipResolvedEvent.Source.IN_GAME && resolvedEvent.isCoreAnnouncementSuppressed()) {
             suppressedAnnouncementIds.add(resolution.flip().getId());
         }
         return new JoinResponse(JoinStatus.SUCCESS, resolution);
@@ -294,7 +399,10 @@ public class CoinflipManager {
 
         Coinflip coinflip = activeById.get(coinflipId);
         if (coinflip == null) {
-            activeByCreator.remove(creatorId);
+            activeByCreator.remove(creatorId, coinflipId);
+            return Optional.empty();
+        }
+        if (coinflip.isVirtualCreator()) {
             return Optional.empty();
         }
 
@@ -303,36 +411,46 @@ public class CoinflipManager {
         }
 
         OfflinePlayer creator = Bukkit.getOfflinePlayer(creatorId);
-        if (!economyService.deposit(creator, coinflip.getStake())) {
+        boolean refunded = economyService.deposit(creator, coinflip.getStake());
+        if (!refunded) {
             plugin.getLogger().warning("Could not refund coinflip creator on quit for UUID " + creatorId);
             plugin.fileLogger().warn("Quit refund failed. creatorUuid=" + creatorId + ", stake=" + coinflip.getStake());
         }
 
-        activeByCreator.remove(creatorId);
+        activeByCreator.remove(creatorId, coinflipId);
         activeById.remove(coinflipId);
-        plugin.fileLogger().info("Coinflip refunded because creator quit. creatorUuid=" + creatorId
-                + ", stake=" + coinflip.getStake() + ", id=" + coinflipId);
+        plugin.fileLogger().info("Coinflip closed because creator quit. creatorUuid=" + creatorId
+                + ", stake=" + coinflip.getStake() + ", id=" + coinflipId + ", refunded=" + refunded);
+        fireClosed(coinflip, CoinflipClosedEvent.Reason.CREATOR_QUIT, refunded);
         return Optional.of(coinflip);
     }
 
     public synchronized void refundAllOpenFlips() {
+        shuttingDown = true;
         List<Coinflip> coinflips = new ArrayList<>(activeById.values());
         if (!coinflips.isEmpty()) {
-            plugin.fileLogger().info("Refunding open coinflips on shutdown. count=" + coinflips.size());
+            plugin.fileLogger().info("Closing open coinflips on shutdown. count=" + coinflips.size());
         }
         for (Coinflip coinflip : coinflips) {
-            if (coinflip.getStatus() != Coinflip.Status.OPEN) {
+            if (coinflip.getStatus() == Coinflip.Status.MATCHING) {
+                coinflip.reopen();
+            }
+            if (!coinflip.cancel()) {
                 continue;
             }
-            OfflinePlayer creator = Bukkit.getOfflinePlayer(coinflip.getCreatorId());
-            if (!economyService.deposit(creator, coinflip.getStake())) {
+            boolean refunded = coinflip.isVirtualCreator()
+                    || economyService.deposit(Bukkit.getOfflinePlayer(coinflip.getCreatorId()), coinflip.getStake());
+            if (!refunded) {
                 plugin.getLogger().warning("Failed to refund coinflip on shutdown for UUID " + coinflip.getCreatorId());
                 plugin.fileLogger().warn("Shutdown refund failed. creatorUuid=" + coinflip.getCreatorId()
                         + ", stake=" + coinflip.getStake() + ", id=" + coinflip.getId());
-            } else {
+            } else if (!coinflip.isVirtualCreator()) {
                 plugin.fileLogger().info("Shutdown refund completed. creatorUuid=" + coinflip.getCreatorId()
                         + ", stake=" + coinflip.getStake() + ", id=" + coinflip.getId());
             }
+            activeById.remove(coinflip.getId());
+            activeByCreator.remove(coinflip.getCreatorId(), coinflip.getId());
+            fireClosed(coinflip, CoinflipClosedEvent.Reason.SHUTDOWN, refunded);
         }
         activeById.clear();
         activeByCreator.clear();
@@ -350,6 +468,10 @@ public class CoinflipManager {
                 .toList();
     }
 
+    private void fireClosed(Coinflip flip, CoinflipClosedEvent.Reason reason, boolean refunded) {
+        Bukkit.getPluginManager().callEvent(new CoinflipClosedEvent(CoinflipSnapshots.flip(flip), reason, refunded));
+    }
+
     private boolean hasOpenCreatorFlip(UUID creatorId) {
         UUID coinflipId = activeByCreator.get(creatorId);
         if (coinflipId == null) {
@@ -357,16 +479,17 @@ public class CoinflipManager {
         }
 
         Coinflip coinflip = activeById.get(coinflipId);
-        if (coinflip != null && coinflip.getStatus() == Coinflip.Status.OPEN) {
+        if (coinflip != null && (coinflip.getStatus() == Coinflip.Status.OPEN
+                || coinflip.getStatus() == Coinflip.Status.MATCHING)) {
             return true;
         }
 
-        activeByCreator.remove(creatorId);
+        activeByCreator.remove(creatorId, coinflipId);
         return false;
     }
 
     private boolean validStake(double stake) {
-        return Double.isFinite(stake) && stake >= 0.0D;
+        return Double.isFinite(stake) && stake >= 0.0D && Double.isFinite(stake * 2.0D);
     }
 
     private String playerName(OfflinePlayer player) {

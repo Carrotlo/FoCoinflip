@@ -17,14 +17,21 @@ public class Coinflip {
     private final String creatorName;
     private final double stake;
     private final long createdAt;
+    private final boolean virtualCreator;
     private final AtomicReference<Status> status;
 
     public Coinflip(UUID id, UUID creatorId, String creatorName, double stake, long createdAt) {
+        this(id, creatorId, creatorName, stake, createdAt, false);
+    }
+
+    public Coinflip(UUID id, UUID creatorId, String creatorName, double stake, long createdAt,
+            boolean virtualCreator) {
         this.id = id;
         this.creatorId = creatorId;
         this.creatorName = creatorName;
         this.stake = stake;
         this.createdAt = createdAt;
+        this.virtualCreator = virtualCreator;
         this.status = new AtomicReference<>(Status.OPEN);
     }
 
@@ -46,6 +53,10 @@ public class Coinflip {
 
     public long getCreatedAt() {
         return createdAt;
+    }
+
+    public boolean isVirtualCreator() {
+        return virtualCreator;
     }
 
     public Status getStatus() {

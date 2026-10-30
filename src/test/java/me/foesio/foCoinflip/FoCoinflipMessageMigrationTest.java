@@ -74,6 +74,18 @@ class FoCoinflipMessageMigrationTest {
     }
 
     @Test
+    void newCancellationMessagesBackfillWithoutOverwritingOwnerText() {
+        YamlConfiguration bundled = bundled("messages.yml");
+        YamlConfiguration owner = new YamlConfiguration();
+        owner.set("flip-create-denied", "&dCustom denial");
+
+        assertTrue(FoCoinflip.backfillApiEventMessages(owner, bundled));
+        assertEquals("&dCustom denial", owner.getString("flip-create-denied"));
+        assertEquals(bundled.getString("flip-join-denied"), owner.getString("flip-join-denied"));
+        assertFalse(FoCoinflip.backfillApiEventMessages(owner, bundled));
+    }
+
+    @Test
     void failedTextUpgradeRestoresExactActiveBytes() throws Exception {
         Path active = temporaryDirectory.resolve("messages.yml");
         byte[] original = "flip-win: '&dGewonnen'\n# owner's spacing\n".getBytes(StandardCharsets.UTF_8);
